@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "snapapp-galleries",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID"
+      "database_id": "4f14401b-f63c-498e-ac09-93732047fabc"
     }
   ],
   "r2_buckets": [
