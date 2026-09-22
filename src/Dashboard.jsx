@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LayoutDashboard, Images, Archive, Plus, Search, ArrowLeft, Image, LogOut, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Images, Archive, Plus, Search, ArrowLeft, Image, LogOut, RefreshCw, ExternalLink } from "lucide-react";
 import "./dashboard.css";
 import PhotoUpload from './PhotoUpload.jsx';
 const blank={title:"",subtitle:"",eventDate:"",autoArchiveEnabled:true,visibility:"unlisted",status:"draft",brandName:"SnapApp",accentColor:"#171717",showBranding:true,downloadsEnabled:true,password:"",downloadPin:""};
@@ -19,7 +19,7 @@ export default function Dashboard({user,onLogout,onExpired}) {
  async function load(){setLoading(true);setError("");try{setGalleries((await api("")).galleries);}catch(e){setError(e.message);}finally{setLoading(false);}}
  useEffect(()=>{load();},[]);
  function navigate(next){setPage(next);setSelected(null);setQuery("");setStatus("all");setError("");setNotice("");}
- function newGallery(){setForm({...blank});setSelected(null);setPhotos([]);setRemovePassword(false);setRemovePin(false);setPage("edit");setError("");setNotice("");}
+ function clientGalleryUrl(g){return "/"+encodeURIComponent(g.slug);}\n function openClientGallery(g){window.open(clientGalleryUrl(g),"_blank","noopener,noreferrer");}\n function newGallery(){setForm({...blank});setSelected(null);setPhotos([]);setRemovePassword(false);setRemovePin(false);setPage("edit");setError("");setNotice("");}
  async function open(g){setBusy(true);setError("");setNotice("");try{
   const data=await api("/"+encodeURIComponent(g.id));const row=data.gallery;
   setSelected(row);setPhotos(data.photos);setForm({title:row.title,subtitle:row.subtitle||"",eventDate:row.event_date||"",autoArchiveEnabled:!!row.auto_archive_enabled,visibility:row.visibility,status:row.status,brandName:row.brand_name||"",accentColor:row.accent_color||"#171717",showBranding:!!row.show_branding,downloadsEnabled:!!row.downloads_enabled,password:"",downloadPin:""});
@@ -58,7 +58,7 @@ export default function Dashboard({user,onLogout,onExpired}) {
        <div className="portal-thumb"><Image size={25}/></div>
        <button className="portal-row-name" onClick={()=>open(g)} disabled={busy}><strong>{g.title}</strong><span>{g.subtitle||"No subtitle"} · {g.photo_count} photos · {g.set_count} sets</span><small>Created {date(g.created_at)} · {g.slug}</small><small>{g.status==="archived"?"Archived — photos retained":g.auto_archive_enabled?(g.expires_at?"Auto-archive: "+new Date(g.expires_at).toLocaleDateString(undefined,{timeZone:"UTC"}):"Auto-archive: set an event date"):"Automatic archive off"}</small></button>
        <span className={"portal-badge "+g.status}>{g.status}</span>
-       <div className="portal-row-actions"><button onClick={()=>open(g)} disabled={busy}>Manage</button><button disabled={busy} onClick={()=>changeStatus(g,g.status==="archived"?"draft":"archived")}>{g.status==="archived"?"Restore":"Archive"}</button></div>
+       <div className="portal-row-actions">{g.status==="published"&&<button onClick={()=>openClientGallery(g)} disabled={busy} title="Open client gallery"><ExternalLink size={15}/>Open client gallery</button>}<button onClick={()=>open(g)} disabled={busy}>Manage</button><button disabled={busy} onClick={()=>changeStatus(g,g.status==="archived"?"draft":"archived")}>{g.status==="archived"?"Restore":"Archive"}</button></div>
       </article>)}</div>}
      {!loading&&<div className="portal-list-footer">{visible.length} {visible.length===1?"gallery":"galleries"} shown</div>}
     </section>
@@ -66,7 +66,7 @@ export default function Dashboard({user,onLogout,onExpired}) {
    {page==="edit"&&<>
     <button className="portal-back" onClick={()=>navigate("galleries")} disabled={busy}><ArrowLeft size={16}/>Back to galleries</button>
     <form className="portal-panel portal-editor" onSubmit={save}>
-     <div><h2>Gallery details</h2>{selected&&<p>Gallery address: <strong>{selected.slug}</strong></p>}</div>
+     <div className="portal-list-heading"><div><h2>Gallery details</h2>{selected&&<p>Gallery address: <strong>{selected.slug}</strong></p>}</div>{selected?.status==="published"&&<button type="button" className="portal-secondary" onClick={()=>openClientGallery(selected)}><ExternalLink size={16}/>Open client gallery</button>}</div>
      <div className="portal-form-grid">
       <label>Gallery title<input name="title" value={form.title} onChange={change} required maxLength={200}/></label>
       <label>Subtitle<input name="subtitle" value={form.subtitle} onChange={change} maxLength={500}/></label>
