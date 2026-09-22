@@ -39,3 +39,11 @@ npm run dev
 ```bash
 npm run build
 ```
+
+## Admin sign-in
+
+Open `/admin.html` and sign in with the authorized Audio Guestbook email and password. Supabase Auth verifies credentials; the Worker restricts access to `ADMIN_USER_ID`. No signup is exposed. Sessions use a Secure, HttpOnly, SameSite=Strict cookie and expire after at most one hour. Sign out clears the gallery cookie without signing out Audio Guestbook.
+
+`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` (public, not a service key), and `ADMIN_USER_ID` configure authentication. The former `ADMIN_TOKEN` is no longer accepted. No passwords or service-role keys belong in the repository.
+
+Run authentication checks with `node --test tests/auth.test.mjs`.

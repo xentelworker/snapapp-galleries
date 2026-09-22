@@ -1,7 +1,9 @@
+import { adminUser, handleAuth } from "./auth.js";
+
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", ...headers }
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers }
   });
 
 const id = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
@@ -10,9 +12,7 @@ const sha256 = async (value) => hex(await crypto.subtle.digest("SHA-256", new Te
 const slugify = (value) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 async function requireAdmin(request, env) {
-  const expected = env.ADMIN_TOKEN;
-  if (!expected) return false;
-  return request.headers.get("authorization") === `Bearer ${expected}`;
+  return !!(await adminUser(request, env));
 }
 
 async function galleryBySlug(env, slug) {
@@ -33,6 +33,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    if (path.startsWith("/api/auth/")) return handleAuth(request, env);
 
     if (path === "/api/health") {
       return json({ ok: true, service: "snapapp-galleries", domain: "gallery.snapapp.ca" });
