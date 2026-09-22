@@ -49,13 +49,21 @@ function App() {
   });
   const prev = () => setActive(i => i === 0 ? photos.length - 1 : i - 1);
   const next = () => setActive(i => i === photos.length - 1 ? 0 : i + 1);
-  const cover = photos.length ? photoUrl(photos[0]) : "";
+  const coverPhoto = photos.find(p => p.id === gallery?.cover_photo_id) || photos[0];
+  const cover = coverPhoto ? photoUrl(coverPhoto) : "";
   const downloadPhoto = p => {
     const a = document.createElement("a"); a.href = photoUrl(p); a.download = p.original_filename || "photo"; a.click();
+  };
+  const downloadAll = async () => {
+    for (const p of photos) {
+      const a = document.createElement("a"); a.href = photoUrl(p); a.download = p.original_filename || "photo"; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 250));
+    }
   };
   const share = async () => {
     try { if (navigator.share) await navigator.share({ title: gallery.title, url: location.href }); else await navigator.clipboard.writeText(location.href); } catch {}
   };
+
+  if (!slug) return <div className="app"><header className="topbar"><div className="wordmark">SNAPAPP GALLERIES</div></header><main className="gallery-shell" style={{textAlign:"center",paddingTop:"12vh",paddingBottom:"12vh"}}><div className="eyebrow dark">WELCOME</div><h1>SnapApp Galleries</h1><p>Beautiful event galleries for sharing your favorite moments.</p><p>Open the private gallery link you received to view your event photos.</p></main><footer><span>SnapApp Galleries</span><span>Event photo sharing</span></footer></div>;
 
   if (loading) return <div className="app"><main className="gallery-shell"><h2>Loading gallery…</h2></main></div>;
   if (error && !gallery) return <div className="app"><main className="gallery-shell"><h2>{error}</h2><p>This gallery may be unpublished, archived, or the address may be incorrect.</p></main></div>;
@@ -91,7 +99,7 @@ function App() {
 
       <main id="gallery" className="gallery-shell">
         <div className="gallery-heading"><div><div className="eyebrow dark">CLIENT GALLERY</div><h2>{gallery.title}</h2></div>
-          <nav className="filters"><button className="active">All</button><button onClick={()=>document.querySelector(".selected")?.scrollIntoView({behavior:"smooth"})}>Favorites ({favorites.size})</button></nav>
+          <nav className="filters"><button className="active">All</button><button onClick={()=>document.querySelector(".selected")?.scrollIntoView({behavior:"smooth"})}>Favorites ({favorites.size})</button>{gallery.downloads_enabled !== 0 && photos.length>0 && <button onClick={downloadAll}><Download size={16}/> Download all</button>}</nav>
         </div>
         {photos.length === 0 ? <p>No photos have been added to this gallery yet.</p> :
         <div className="grid">{photos.map((p,i)=>(
