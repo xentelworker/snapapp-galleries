@@ -1,3 +1,4 @@
+import { manageGalleries } from "./manage.js";
 import { adminUser, handleAuth } from "./auth.js";
 
 const json = (data, status = 200, headers = {}) =>
@@ -35,6 +36,9 @@ export default {
     const path = url.pathname;
 
     if (path.startsWith("/api/auth/")) return handleAuth(request, env);
+
+    const management = await manageGalleries(request, env);
+    if (management) return management;
 
     if (path === "/api/health") {
       return json({ ok: true, service: "snapapp-galleries", domain: "gallery.snapapp.ca" });

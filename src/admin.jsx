@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import Dashboard from "./Dashboard";
 
 function Admin() {
   const [user, setUser] = useState(null);
@@ -32,23 +33,8 @@ function Admin() {
     try {
       const r = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
       if (!r.ok) throw new Error();
-      setUser(null); setResult(null); setPassword("");
+      setUser(null); setPassword("");
     } catch { setError("Unable to sign out. Please try again."); }
-    finally { setBusy(false); }
-  }
-  const [form, setForm] = useState({ title:"", subtitle:"", visibility:"unlisted", password:"", downloadPin:"", showBranding:true, downloadsEnabled:true, brandName:"SnapApp" });
-  const [result, setResult] = useState(null);
-  const change = e => setForm({...form, [e.target.name]: e.target.type==="checkbox" ? e.target.checked : e.target.value});
-  async function create(e) {
-    e.preventDefault();
-    setBusy(true); setError(""); setResult(null);
-    try {
-      const r = await fetch("/api/admin/galleries", {method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(form)});
-      if (r.status === 401) { setUser(null); setError("Your session has expired. Please sign in again."); return; }
-      const data = await r.json().catch(() => null);
-      if (!r.ok || !data) { setError(data?.error || "The server could not save the gallery. Please try again."); return; }
-      setResult(data);
-    } catch { setError("Unable to connect. Please try again."); }
     finally { setBusy(false); }
   }
   if (checking) return <main className="login-page"><p role="status">Checking your session…</p></main>;
@@ -69,23 +55,6 @@ function Admin() {
       <p className="login-hint">Use your Audio Guestbook account.</p>
     </section>
   </main>;
-  return <main className="admin-shell">
-    <div className="admin-head"><div><div className="eyebrow dark">SNAPAPP GALLERIES</div><h1>New Gallery</h1></div><button className="signout" onClick={logout} disabled={busy}>Sign out</button></div>
-    {error && <p className="login-error" role="alert">{error}</p>}
-    <form className="admin-card" onSubmit={create}>
-      <div className="form-grid">
-        <label>Gallery title<input name="title" value={form.title} onChange={change} required /></label>
-        <label>Subtitle / date<input name="subtitle" value={form.subtitle} onChange={change} /></label>
-        <label>Visibility<select name="visibility" value={form.visibility} onChange={change}><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label>
-        <label>Gallery password<input name="password" value={form.password} onChange={change} /></label>
-        <label>Download PIN<input name="downloadPin" value={form.downloadPin} onChange={change} /></label>
-        <label>Brand name<input name="brandName" value={form.brandName} onChange={change} /></label>
-      </div>
-      <label className="check"><input type="checkbox" name="showBranding" checked={form.showBranding} onChange={change}/> Show branding</label>
-      <label className="check"><input type="checkbox" name="downloadsEnabled" checked={form.downloadsEnabled} onChange={change}/> Allow downloads</label>
-      <button className="primary" disabled={busy}>{busy ? "Creating…" : "Create Gallery"}</button>
-      {result && <div className="result" role="status"><strong>Gallery created: {result.title}</strong><p>Saved as a draft. Gallery address: {result.slug}</p></div>}
-    </form>
-  </main>
+  return <Dashboard user={user} onLogout={logout} onExpired={()=>setUser(null)} />;
 }
 createRoot(document.getElementById("root")).render(<Admin/>);
