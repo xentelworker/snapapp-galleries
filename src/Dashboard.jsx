@@ -19,7 +19,9 @@ export default function Dashboard({user,onLogout,onExpired}) {
  async function load(){setLoading(true);setError("");try{setGalleries((await api("")).galleries);}catch(e){setError(e.message);}finally{setLoading(false);}}
  useEffect(()=>{load();},[]);
  function navigate(next){setPage(next);setSelected(null);setQuery("");setStatus("all");setError("");setNotice("");}
- function clientGalleryUrl(g){return "/"+encodeURIComponent(g.slug);}\n function openClientGallery(g){window.open(clientGalleryUrl(g),"_blank","noopener,noreferrer");}\n function newGallery(){setForm({...blank});setSelected(null);setPhotos([]);setRemovePassword(false);setRemovePin(false);setPage("edit");setError("");setNotice("");}
+ function clientGalleryUrl(g){return "/"+encodeURIComponent(g.slug);}
+ function openClientGallery(g){window.open(clientGalleryUrl(g),"_blank","noopener,noreferrer");}
+ function newGallery(){setForm({...blank});setSelected(null);setPhotos([]);setRemovePassword(false);setRemovePin(false);setPage("edit");setError("");setNotice("");}
  async function open(g){setBusy(true);setError("");setNotice("");try{
   const data=await api("/"+encodeURIComponent(g.id));const row=data.gallery;
   setSelected(row);setPhotos(data.photos);setForm({title:row.title,subtitle:row.subtitle||"",eventDate:row.event_date||"",autoArchiveEnabled:!!row.auto_archive_enabled,visibility:row.visibility,status:row.status,brandName:row.brand_name||"",accentColor:row.accent_color||"#171717",showBranding:!!row.show_branding,downloadsEnabled:!!row.downloads_enabled,password:"",downloadPin:""});
