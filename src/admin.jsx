@@ -45,8 +45,8 @@ function Admin() {
     try {
       const r = await fetch("/api/admin/galleries", {method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(form)});
       if (r.status === 401) { setUser(null); setError("Your session has expired. Please sign in again."); return; }
-      const data = await r.json();
-      if (!r.ok) { setError(data.error || "Unable to create the gallery."); return; }
+      const data = await r.json().catch(() => null);
+      if (!r.ok || !data) { setError(data?.error || "The server could not save the gallery. Please try again."); return; }
       setResult(data);
     } catch { setError("Unable to connect. Please try again."); }
     finally { setBusy(false); }
@@ -84,7 +84,7 @@ function Admin() {
       <label className="check"><input type="checkbox" name="showBranding" checked={form.showBranding} onChange={change}/> Show branding</label>
       <label className="check"><input type="checkbox" name="downloadsEnabled" checked={form.downloadsEnabled} onChange={change}/> Allow downloads</label>
       <button className="primary" disabled={busy}>{busy ? "Creating…" : "Create Gallery"}</button>
-      {result && <pre className="result">{JSON.stringify(result,null,2)}</pre>}
+      {result && <div className="result" role="status"><strong>Gallery created: {result.title}</strong><p>Saved as a draft. Gallery address: {result.slug}</p></div>}
     </form>
   </main>
 }

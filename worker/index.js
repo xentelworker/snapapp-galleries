@@ -48,26 +48,49 @@ export default {
 
     if (path === "/api/admin/galleries" && request.method === "POST") {
       if (!(await requireAdmin(request, env))) return json({ error: "unauthorized" }, 401);
-      const body = await request.json();
+      let body;
+      try { body = await request.json(); } catch { return json({ error: "Invalid gallery details." }, 400); }
+      if (!body || typeof body.title !== "string" || !body.title.trim()) return json({ error: "Enter a gallery title." }, 400);
+      if (body.title.length > 200) return json({ error: "Keep the gallery title under 200 characters." }, 400);
+      for (const field of ["slug", "subtitle", "password", "downloadPin", "brandName", "accentColor"]) {
+        if (body[field] != null && typeof body[field] !== "string") return json({ error: "Invalid gallery details." }, 400);
+      }
+      if (body.status && !["draft", "published", "archived"].includes(body.status)) return json({ error: "Choose a valid gallery status." }, 400);
+      if (body.visibility && !["public", "unlisted", "private"].includes(body.visibility)) return json({ error: "Choose a valid visibility." }, 400);
       const galleryId = id("gal");
-      const slug = slugify(body.slug || body.title || galleryId);
+      const setId = id("set");
+      const customSlug = !!body.slug?.trim();
+      const baseSlug = slugify(body.slug || body.title) || galleryId;
       const passwordHash = body.password ? await sha256(body.password) : null;
       const pinHash = body.downloadPin ? await sha256(body.downloadPin) : null;
-      await env.DB.prepare(
-        `INSERT INTO galleries
-          (id,slug,title,subtitle,status,visibility,password_hash,download_pin_hash,downloads_enabled,show_branding,brand_name,accent_color)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(
-        galleryId, slug, body.title, body.subtitle || "", body.status || "draft",
-        body.visibility || "unlisted", passwordHash, pinHash,
-        body.downloadsEnabled === false ? 0 : 1,
-        body.showBranding === false ? 0 : 1,
-        body.brandName || "SnapApp", body.accentColor || "#171717"
-      ).run();
-      const setId = id("set");
-      await env.DB.prepare("INSERT INTO gallery_sets (id,gallery_id,name,slug,sort_order) VALUES (?,?,?,?,0)")
-        .bind(setId, galleryId, "Highlights", "highlights").run();
-      return json({ id: galleryId, slug, defaultSetId: setId }, 201);
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const slug = attempt === 0 ? baseSlug : baseSlug + "-" + crypto.randomUUID().slice(0, 8);
+        try {
+          await env.DB.batch([
+            env.DB.prepare(
+              `INSERT INTO galleries
+                (id,slug,title,subtitle,status,visibility,password_hash,download_pin_hash,downloads_enabled,show_branding,brand_name,accent_color)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+            ).bind(
+              galleryId, slug, body.title.trim(), body.subtitle || "", body.status || "draft",
+              body.visibility || "unlisted", passwordHash, pinHash,
+              body.downloadsEnabled === false ? 0 : 1, body.showBranding === false ? 0 : 1,
+              body.brandName || "SnapApp", body.accentColor || "#171717"
+            ),
+            env.DB.prepare("INSERT INTO gallery_sets (id,gallery_id,name,slug,sort_order) VALUES (?,?,?,?,0)")
+              .bind(setId, galleryId, "Highlights", "highlights")
+          ]);
+          return json({ id: galleryId, slug, title: body.title.trim(), defaultSetId: setId }, 201);
+        } catch (error) {
+          const detail = String(error.message || "") + " " + String(error.cause?.message || "");
+          if (/UNIQUE constraint failed: galleries.slug/i.test(detail)) {
+            if (customSlug) return json({ error: "That gallery address is already in use. Choose another address." }, 409);
+            continue;
+          }
+          return json({ error: "We couldn't save the gallery. Please try again." }, 500);
+        }
+      }
+      return json({ error: "Couldn't choose an available gallery address. Please try again." }, 409);
     }
 
     const publicMatch = path.match(/^\/api\/galleries\/([^/]+)$/);
