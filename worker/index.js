@@ -124,7 +124,7 @@ export default {
       if (!gallery.password_hash) return json({ ok: true });
       const body = await request.json();
       if (await sha256(body.password || "") !== gallery.password_hash) return json({ error: "invalid_password" }, 401);
-      return json({ ok: true, gallery: { id: gallery.id, slug: gallery.slug, title: gallery.title, subtitle: gallery.subtitle, showBranding: !!gallery.show_branding, brandName: gallery.brand_name }, photos: await listPhotos(env, gallery.id) });
+      return json({ ok: true, gallery: { ...gallery, password_hash: undefined, download_pin_hash: undefined }, photos: await listPhotos(env, gallery.id) });
     }
 
     const uploadMatch = path.match(/^\/api\/upload\/([^/]+)$/);
