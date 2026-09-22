@@ -1,0 +1,1 @@
+ALTER TABLE galleries ADD COLUMN cover_position_y INTEGER NOT NULL DEFAULT 50;
