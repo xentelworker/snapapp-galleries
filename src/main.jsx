@@ -89,7 +89,7 @@ function App() {
         <div className="top-actions"><button className="favorites-count"><Heart size={17}/> {favorites.size}</button></div>
       </header>
 
-      <section className="hero" style={cover ? {backgroundImage:'linear-gradient(rgba(0,0,0,.17),rgba(0,0,0,.28)),url("' + cover + '")'} : {}}>
+      <section className="hero" style={cover ? {backgroundImage:'linear-gradient(rgba(0,0,0,.17),rgba(0,0,0,.28)),url("' + cover + '")',backgroundPosition:"center "+(gallery.cover_position_y??50)+"%"} : {}}>
         <div className="hero-content">
           {gallery.show_branding && <div className="eyebrow">SNAPAPP GALLERIES</div>}
           <h1>{gallery.title}</h1><p>{gallery.subtitle}</p>
