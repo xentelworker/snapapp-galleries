@@ -1,7 +1,7 @@
 import { adminUser } from "./auth.js";
 import { archiveDue, lifecycleValues } from "./lifecycle.js";
 const json = (data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json","cache-control":"no-store"}});
-const fields = `g.id,g.slug,g.title,g.subtitle,g.status,g.visibility,g.downloads_enabled,g.show_branding,g.brand_name,g.accent_color,g.cover_photo_id,g.created_at,g.updated_at,g.event_date,g.auto_archive_enabled,g.auto_archive_started_at,g.expires_at,
+const fields = `g.id,g.slug,g.title,g.subtitle,g.status,g.visibility,g.downloads_enabled,g.show_branding,g.brand_name,g.accent_color,g.cover_photo_id,g.cover_position_y,g.created_at,g.updated_at,g.event_date,g.auto_archive_enabled,g.auto_archive_started_at,g.expires_at,
 CASE WHEN g.password_hash IS NULL THEN 0 ELSE 1 END AS has_password,
 CASE WHEN g.download_pin_hash IS NULL THEN 0 ELSE 1 END AS has_download_pin,
 (SELECT COUNT(*) FROM photos p WHERE p.gallery_id=g.id) AS photo_count,
@@ -41,6 +41,7 @@ export async function manageGalleries(request,env) {
    if(!choices.includes(body[key]))return json({error:"Choose a valid "+key+"."},400);
    set(key,body[key]);
   }
+  if("coverPositionY" in body){const y=Number(body.coverPositionY);if(!Number.isFinite(y)||y<0||y>100)return json({error:"Cover position must be between 0 and 100."},400);set("cover_position_y",Math.round(y));}
   if("coverPhotoId" in body){if(body.coverPhotoId!==null&&typeof body.coverPhotoId!=="string")return json({error:"Invalid cover photo."},400);if(body.coverPhotoId){const cover=await env.DB.prepare("SELECT id FROM photos WHERE id=? AND gallery_id=?").bind(body.coverPhotoId,galleryId).first();if(!cover)return json({error:"Choose a photo from this gallery for the cover."},400);}set("cover_photo_id",body.coverPhotoId||null);}
   for(const [key,column] of [["showBranding","show_branding"],["downloadsEnabled","downloads_enabled"]]){
    if(!(key in body))continue;
