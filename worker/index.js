@@ -1,4 +1,6 @@
 import { manageGalleries } from "./manage.js";
+import { archiveDue, lifecycleValues } from "./lifecycle.js";
+import { browserUpload } from "./browser-upload.js";
 import { adminUser, handleAuth } from "./auth.js";
 
 const json = (data, status = 200, headers = {}) =>
@@ -17,6 +19,7 @@ async function requireAdmin(request, env) {
 }
 
 async function galleryBySlug(env, slug) {
+  await archiveDue(env);
   return env.DB.prepare("SELECT * FROM galleries WHERE slug = ? AND status = 'published'").bind(slug).first();
 }
 
@@ -31,11 +34,15 @@ async function listPhotos(env, galleryId) {
 }
 
 export default {
+  async scheduled(event, env, ctx) { ctx.waitUntil(archiveDue(env)); },
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
 
     if (path.startsWith("/api/auth/")) return handleAuth(request, env);
+
+    const upload = await browserUpload(request, env);
+    if (upload) return upload;
 
     const management = await manageGalleries(request, env);
     if (management) return management;
@@ -61,6 +68,8 @@ export default {
       }
       if (body.status && !["draft", "published", "archived"].includes(body.status)) return json({ error: "Choose a valid gallery status." }, 400);
       if (body.visibility && !["public", "unlisted", "private"].includes(body.visibility)) return json({ error: "Choose a valid visibility." }, 400);
+      let lifecycle;
+      try { lifecycle = lifecycleValues(body); } catch (e) { return json({error:e.message},400); }
       const galleryId = id("gal");
       const setId = id("set");
       const customSlug = !!body.slug?.trim();
@@ -73,13 +82,14 @@ export default {
           await env.DB.batch([
             env.DB.prepare(
               `INSERT INTO galleries
-                (id,slug,title,subtitle,status,visibility,password_hash,download_pin_hash,downloads_enabled,show_branding,brand_name,accent_color)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+                (id,slug,title,subtitle,status,visibility,password_hash,download_pin_hash,downloads_enabled,show_branding,brand_name,accent_color,event_date,auto_archive_enabled,auto_archive_started_at,expires_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
             ).bind(
               galleryId, slug, body.title.trim(), body.subtitle || "", body.status || "draft",
               body.visibility || "unlisted", passwordHash, pinHash,
               body.downloadsEnabled === false ? 0 : 1, body.showBranding === false ? 0 : 1,
-              body.brandName || "SnapApp", body.accentColor || "#171717"
+              body.brandName || "SnapApp", body.accentColor || "#171717",
+              lifecycle.event_date,lifecycle.auto_archive_enabled,lifecycle.auto_archive_started_at,lifecycle.expires_at
             ),
             env.DB.prepare("INSERT INTO gallery_sets (id,gallery_id,name,slug,sort_order) VALUES (?,?,?,?,0)")
               .bind(setId, galleryId, "Highlights", "highlights")
@@ -127,6 +137,9 @@ export default {
       const setId = decodeURIComponent(uploadMatch[1]);
       const set = await env.DB.prepare("SELECT * FROM gallery_sets WHERE id=?").bind(setId).first();
       if (!set || (device.gallery_id && device.gallery_id !== set.gallery_id)) return json({ error: "invalid_destination" }, 403);
+      await archiveDue(env);
+      const destination = await env.DB.prepare("SELECT status FROM galleries WHERE id=?").bind(set.gallery_id).first();
+      if (destination?.status === "archived") return json({error:"Restore this gallery before uploading photos."},409);
 
       const filename = request.headers.get("x-file-name") || `${Date.now()}.jpg`;
       const mime = request.headers.get("content-type") || "application/octet-stream";
@@ -149,12 +162,16 @@ export default {
     if (photoMatch && request.method === "GET") {
       const photo = await env.DB.prepare("SELECT * FROM photos WHERE id=?").bind(photoMatch[1]).first();
       if (!photo) return new Response("Not found", { status: 404 });
+      await archiveDue(env);
+      const gallery = await env.DB.prepare("SELECT status FROM galleries WHERE id=?").bind(photo.gallery_id).first();
+      if (gallery?.status === "archived" && !(await requireAdmin(request,env))) return new Response("This gallery has been archived.", {status:410,headers:{"cache-control":"no-store"}});
       const object = await env.PHOTOS.get(photo.storage_key);
       if (!object) return new Response("Not found", { status: 404 });
       const headers = new Headers();
       object.writeHttpMetadata(headers);
       headers.set("etag", object.httpEtag);
-      headers.set("cache-control", "public, max-age=3600");
+      headers.set("cache-control", "private, no-store");
+      headers.set("x-content-type-options", "nosniff");
       return new Response(object.body, { headers });
     }
 

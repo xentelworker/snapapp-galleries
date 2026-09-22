@@ -36,5 +36,10 @@
     "SUPABASE_URL": "https://mjatifnaqbbxrfylflrx.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_33il9bepVxZe3o6a5f-Ajg_1P0itwmN",
     "ADMIN_USER_ID": "5dbda189-3470-4256-8e3f-9bc9b948c04b"
+  },
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
   }
 }

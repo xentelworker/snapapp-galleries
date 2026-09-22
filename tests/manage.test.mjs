@@ -6,6 +6,7 @@ import { manageGalleries } from '../worker/manage.js';
 const db=new DatabaseSync(':memory:');db.exec(readFileSync(new URL('../migrations/0001_initial.sql',import.meta.url),'utf8'));
 db.exec("INSERT INTO galleries(id,slug,title,password_hash,download_pin_hash) VALUES ('one','one','One','secret-hash','pin-hash'); INSERT INTO gallery_sets(id,gallery_id,name,slug) VALUES ('set','one','Highlights','highlights');");
 const env={SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY:'public',ADMIN_USER_ID:'owner',DB:{prepare(sql){const make=args=>({bind(...params){return make(params)},async all(){return {results:db.prepare(sql).all(...args)}},async first(){return db.prepare(sql).get(...args)},async run(){return db.prepare(sql).run(...args)}});return make([])}}};
+db.exec(readFileSync(new URL('../migrations/0002_gallery_lifecycle.sql',import.meta.url),'utf8'));
 globalThis.fetch=async()=>Response.json({id:'owner'});
 const req=(path='',body)=>new Request('https://gallery.snapapp.ca/api/admin/galleries'+path,{method:body?'PATCH':'GET',headers:{cookie:'__Host-snapapp_admin=a.b.c',origin:'https://gallery.snapapp.ca','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
 test('lists counts without exposing hashes',async()=>{const r=await manageGalleries(req(),env);assert.equal(r.status,200);const g=(await r.json()).galleries[0];assert.equal(g.set_count,1);assert.equal(g.photo_count,0);assert.equal(g.has_password,1);assert.equal(g.password_hash,undefined);assert.equal(g.download_pin_hash,undefined)});
@@ -14,3 +15,5 @@ test('supports publishing, archive and restore to draft',async()=>{for(const sta
 test('rejects invalid fields and missing records',async()=>{assert.equal((await manageGalleries(req('/one',{title:' '}),env)).status,400);assert.equal((await manageGalleries(req('/one',{status:'wrong'}),env)).status,400);assert.equal((await manageGalleries(req('/missing'),env)).status,404)});
 test('requires authentication and same-origin writes',async()=>{assert.equal((await manageGalleries(new Request('https://gallery.snapapp.ca/api/admin/galleries'),env)).status,401);const r=req('/one',{title:'Bad'});r.headers.set('origin','https://evil.example');assert.equal((await manageGalleries(r,env)).status,401)});
 test('password and PIN change only when requested',async()=>{let r=await manageGalleries(req('/one',{password:'new-password'}),env);assert.equal(r.status,200);assert.notEqual(db.prepare("SELECT password_hash FROM galleries WHERE id='one'").get().password_hash,'secret-hash');r=await manageGalleries(req('/one',{password:'',downloadPin:''}),env);const g=(await r.json()).gallery;assert.equal(g.has_password,0);assert.equal(g.has_download_pin,0)});
+
+

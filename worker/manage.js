@@ -1,6 +1,7 @@
 import { adminUser } from "./auth.js";
+import { archiveDue, lifecycleValues } from "./lifecycle.js";
 const json = (data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"content-type":"application/json","cache-control":"no-store"}});
-const fields = `g.id,g.slug,g.title,g.subtitle,g.status,g.visibility,g.downloads_enabled,g.show_branding,g.brand_name,g.accent_color,g.created_at,g.updated_at,
+const fields = `g.id,g.slug,g.title,g.subtitle,g.status,g.visibility,g.downloads_enabled,g.show_branding,g.brand_name,g.accent_color,g.created_at,g.updated_at,g.event_date,g.auto_archive_enabled,g.auto_archive_started_at,g.expires_at,
 CASE WHEN g.password_hash IS NULL THEN 0 ELSE 1 END AS has_password,
 CASE WHEN g.download_pin_hash IS NULL THEN 0 ELSE 1 END AS has_download_pin,
 (SELECT COUNT(*) FROM photos p WHERE p.gallery_id=g.id) AS photo_count,
@@ -12,6 +13,7 @@ export async function manageGalleries(request,env) {
  if(!(path==="/api/admin/galleries"&&request.method==="GET")&&!match)return null;
  if(!await adminUser(request,env))return json({error:"Please sign in again."},401);
  try {
+  await archiveDue(env);
   if(!match){const rows=await env.DB.prepare("SELECT "+fields+" FROM galleries g ORDER BY g.created_at DESC,g.id DESC").all();return json({galleries:rows.results||[]});}
   const galleryId=decodeURIComponent(match[1]);
   const gallery=await env.DB.prepare("SELECT "+fields+" FROM galleries g WHERE g.id=?").bind(galleryId).first();
@@ -25,6 +27,10 @@ export async function manageGalleries(request,env) {
   if(!body||typeof body!=="object"||Array.isArray(body))return json({error:"Invalid gallery details."},400);
   const updates=[],values=[];
   const set=(key,value)=>{updates.push(key+"=?");values.push(value);};
+  if(['eventDate','autoArchiveEnabled','status'].some(key=>key in body)) {
+   let lifecycle;try{lifecycle=lifecycleValues(body,gallery);}catch(e){return json({error:e.message},400);}
+   for(const [key,value] of Object.entries(lifecycle))set(key,value);
+  }
   for(const [key,column,max] of [["title","title",200],["subtitle","subtitle",500],["brandName","brand_name",200],["accentColor","accent_color",7]]){
    if(!(key in body))continue;
    if(typeof body[key]!=="string"||body[key].length>max||(key==="title"&&!body[key].trim())||(key==="accentColor"&&!/^#[a-f0-9]{6}$/i.test(body[key])))return json({error:"Enter valid gallery details."},400);

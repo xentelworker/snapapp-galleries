@@ -9,6 +9,7 @@ const env = {SUPABASE_URL:'https://example.supabase.co',SUPABASE_PUBLISHABLE_KEY
  prepare(sql){return {bind(...args){return {sql,args};}};},
  async batch(stmts){db.exec('BEGIN');try {for(const s of stmts)db.prepare(s.sql).run(...s.args);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}
 }};
+db.exec(readFileSync(new URL('../migrations/0002_gallery_lifecycle.sql',import.meta.url),'utf8'));
 globalThis.fetch=async()=>Response.json({id:'owner'});
 const create=body=>worker.fetch(new Request('https://gallery.snapapp.ca/api/admin/galleries',{method:'POST',headers:{origin:'https://gallery.snapapp.ca',cookie:'__Host-snapapp_admin=a.b.c','content-type':'application/json'},body:JSON.stringify(body)}),env);
 test('same title creates distinct addresses and default sets',async()=>{
@@ -28,3 +29,5 @@ test('set failure rolls back gallery and returns JSON',async()=>{
  const r=await create({title:'Rollback'});assert.equal(r.status,500);assert.ok((await r.json()).error);
  assert.equal(db.prepare("SELECT count(*) AS n FROM galleries WHERE slug='rollback'").get().n,0);
 });
+
+

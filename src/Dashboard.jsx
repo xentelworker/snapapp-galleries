@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { LayoutDashboard, Images, Archive, Plus, Search, ArrowLeft, Image, LogOut, RefreshCw } from "lucide-react";
 import "./dashboard.css";
-const blank={title:"",subtitle:"",visibility:"unlisted",status:"draft",brandName:"SnapApp",accentColor:"#171717",showBranding:true,downloadsEnabled:true,password:"",downloadPin:""};
+import PhotoUpload from './PhotoUpload.jsx';
+const blank={title:"",subtitle:"",eventDate:"",autoArchiveEnabled:true,visibility:"unlisted",status:"draft",brandName:"SnapApp",accentColor:"#171717",showBranding:true,downloadsEnabled:true,password:"",downloadPin:""};
 const date=value=>new Date(value.replace(" ","T")+"Z").toLocaleDateString(undefined,{year:"numeric",month:"short",day:"numeric"});
 export default function Dashboard({user,onLogout,onExpired}) {
  const [galleries,setGalleries]=useState([]),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false);
@@ -21,7 +22,7 @@ export default function Dashboard({user,onLogout,onExpired}) {
  function newGallery(){setForm({...blank});setSelected(null);setPhotos([]);setRemovePassword(false);setRemovePin(false);setPage("edit");setError("");setNotice("");}
  async function open(g){setBusy(true);setError("");setNotice("");try{
   const data=await api("/"+encodeURIComponent(g.id));const row=data.gallery;
-  setSelected(row);setPhotos(data.photos);setForm({title:row.title,subtitle:row.subtitle||"",visibility:row.visibility,status:row.status,brandName:row.brand_name||"",accentColor:row.accent_color||"#171717",showBranding:!!row.show_branding,downloadsEnabled:!!row.downloads_enabled,password:"",downloadPin:""});
+  setSelected(row);setPhotos(data.photos);setForm({title:row.title,subtitle:row.subtitle||"",eventDate:row.event_date||"",autoArchiveEnabled:!!row.auto_archive_enabled,visibility:row.visibility,status:row.status,brandName:row.brand_name||"",accentColor:row.accent_color||"#171717",showBranding:!!row.show_branding,downloadsEnabled:!!row.downloads_enabled,password:"",downloadPin:""});
   setRemovePassword(false);setRemovePin(false);setPage("edit");
  }catch(e){setError(e.message);}finally{setBusy(false);}}
  async function changeStatus(g,next){setBusy(true);setError("");setNotice("");try{
@@ -55,7 +56,7 @@ export default function Dashboard({user,onLogout,onExpired}) {
      {loading?<div className="portal-empty" role="status">Loading galleries…</div>:visible.length===0?<div className="portal-empty"><Images size={36}/><h3>{query?"No matching galleries":"No galleries here yet"}</h3><p>{query?"Try another title or change the filter.":"Create a gallery to start organizing your photos."}</p>{!query&&page!=="archive"&&<button onClick={newGallery} className="portal-primary">Create your first gallery</button>}</div>:
       <div className="portal-list">{visible.map(g=><article key={g.id} className="portal-row">
        <div className="portal-thumb"><Image size={25}/></div>
-       <button className="portal-row-name" onClick={()=>open(g)} disabled={busy}><strong>{g.title}</strong><span>{g.subtitle||"No subtitle"} · {g.photo_count} photos · {g.set_count} sets</span><small>Created {date(g.created_at)} · {g.slug}</small></button>
+       <button className="portal-row-name" onClick={()=>open(g)} disabled={busy}><strong>{g.title}</strong><span>{g.subtitle||"No subtitle"} · {g.photo_count} photos · {g.set_count} sets</span><small>Created {date(g.created_at)} · {g.slug}</small><small>{g.status==="archived"?"Archived — photos retained":g.auto_archive_enabled?(g.expires_at?"Auto-archive: "+new Date(g.expires_at).toLocaleDateString(undefined,{timeZone:"UTC"}):"Auto-archive: set an event date"):"Automatic archive off"}</small></button>
        <span className={"portal-badge "+g.status}>{g.status}</span>
        <div className="portal-row-actions"><button onClick={()=>open(g)} disabled={busy}>Manage</button><button disabled={busy} onClick={()=>changeStatus(g,g.status==="archived"?"draft":"archived")}>{g.status==="archived"?"Restore":"Archive"}</button></div>
       </article>)}</div>}
@@ -68,13 +69,13 @@ export default function Dashboard({user,onLogout,onExpired}) {
      <div><h2>Gallery details</h2>{selected&&<p>Gallery address: <strong>{selected.slug}</strong></p>}</div>
      <div className="portal-form-grid">
       <label>Gallery title<input name="title" value={form.title} onChange={change} required maxLength={200}/></label>
-      <label>Subtitle / date<input name="subtitle" value={form.subtitle} onChange={change} maxLength={500}/></label>
+      <label>Subtitle<input name="subtitle" value={form.subtitle} onChange={change} maxLength={500}/></label>
       <label>Status<select name="status" value={form.status} onChange={change}><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label>
       <label>Visibility<select name="visibility" value={form.visibility} onChange={change}><option value="public">Public</option><option value="unlisted">Unlisted</option><option value="private">Private</option></select></label>
       <label>Brand name<input name="brandName" value={form.brandName} onChange={change} maxLength={200}/></label>
       <label>Accent color<input name="accentColor" type="color" value={form.accentColor} onChange={change}/></label>
      </div>
-     <h2>Access and downloads</h2>
+     <h2>Automatic archive</h2><div className="portal-form-grid"><label>Event date<input type="date" name="eventDate" value={form.eventDate} onChange={change}/></label></div><label className="portal-check"><input type="checkbox" name="autoArchiveEnabled" checked={form.autoArchiveEnabled} onChange={change}/>Automatically archive after 3 months</label><p className="portal-muted">The cycle starts on the event date. Archived photos stay stored and can be restored. Restoring turns automatic archive off.</p>{selected?.expires_at&&<p>Scheduled archive: {new Date(selected.expires_at).toLocaleDateString(undefined,{timeZone:"UTC"})} (UTC). Save changes to update the schedule.</p>}<h2>Access and downloads</h2>
      <div className="portal-form-grid">
       <label>Gallery password<input name="password" type="password" autoComplete="new-password" value={form.password} onChange={change} disabled={removePassword} maxLength={256} placeholder={selected?.has_password?"Leave blank to keep current password":"Optional"}/></label>
       <label>Download PIN<input name="downloadPin" type="password" autoComplete="new-password" value={form.downloadPin} onChange={change} disabled={removePin} maxLength={256} placeholder={selected?.has_download_pin?"Leave blank to keep current PIN":"Optional"}/></label>
@@ -85,8 +86,10 @@ export default function Dashboard({user,onLogout,onExpired}) {
      <label className="portal-check"><input type="checkbox" name="downloadsEnabled" checked={form.downloadsEnabled} onChange={change}/>Allow downloads</label>
      <div className="portal-save"><button className="portal-primary" disabled={busy}>{busy?"Saving…":selected?"Save changes":"Create gallery"}</button><button type="button" className="portal-secondary" onClick={()=>navigate("galleries")} disabled={busy}>Cancel</button></div>
     </form>
-    {selected&&<section className="portal-panel portal-editor"><h2>Photos <span className="portal-muted">({photos.length})</span></h2>{photos.length?<div className="portal-photos">{photos.map(p=><a key={p.id} href={"/media/"+encodeURIComponent(p.id)} target="_blank" rel="noreferrer"><img src={"/media/"+encodeURIComponent(p.id)} alt={p.original_filename} loading="lazy"/><span>{p.original_filename}</span></a>)}</div>:<div className="portal-empty"><Image size={32}/><h3>No photos yet</h3><p>This gallery is ready for photos from your uploader.</p></div>}</section>}
+    {selected&&<section className="portal-panel portal-editor"><h2>Photos <span className="portal-muted">({photos.length})</span></h2><PhotoUpload key={selected.id} galleryId={selected.id} archived={selected.status==="archived"} onBusy={setBusy} onExpired={onExpired} onComplete={async()=>{try{const data=await api("/"+encodeURIComponent(selected.id));setPhotos(data.photos);setGalleries(rows=>rows.map(g=>g.id===selected.id?data.gallery:g));}catch(e){setError(e.message);}}}/>{photos.length?<div className="portal-photos">{photos.map(p=><a key={p.id} href={"/media/"+encodeURIComponent(p.id)} target="_blank" rel="noreferrer"><img src={"/media/"+encodeURIComponent(p.id)} alt={p.original_filename} loading="lazy"/><span>{p.original_filename}</span></a>)}</div>:<div className="portal-empty"><Image size={32}/><h3>No photos yet</h3><p>Use Upload photos above to add your first images.</p></div>}</section>}
    </>}
   </main>
  </div>;
 }
+
+
