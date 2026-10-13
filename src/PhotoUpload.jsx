@@ -69,7 +69,7 @@ export default function PhotoUpload({galleryId,archived,onBusy,onComplete,onExpi
   }finally{setRunning(false);onBusy(false);}
  }
  async function optimizeExisting(){
-  const pending=photos.filter(p=>!p.thumbnail_key||!p.cover_key);
+  const pending=photos.filter(p=>p.mime_type!=="image/gif"&&(!p.thumbnail_key||!p.cover_key));
   if(!pending.length)return;
   setOptimizing(true);onBusy(true);setOptimizationStatus("Preparing previews…");
   let completed=0,failed=0;
@@ -90,7 +90,7 @@ export default function PhotoUpload({galleryId,archived,onBusy,onComplete,onExpi
   }finally{setOptimizing(false);onBusy(false);}
  }
  function choose(e){const rows=Array.from(e.target.files||[]).map(file=>({file,status:"Waiting",progress:0,error:"",previewError:""}));e.target.value="";if(!rows.length)return;setItems(rows);run(rows);}
- const pendingCount=photos.filter(p=>!p.thumbnail_key||!p.cover_key).length;
+ const pendingCount=photos.filter(p=>p.mime_type!=="image/gif"&&(!p.thumbnail_key||!p.cover_key)).length;
  return <div className="portal-upload">
   <p>{archived?"Restore this gallery to upload more photos.":"Upload photos from your computer into Highlights. JPEG, PNG, WebP, or GIF — up to 25 MB each. SnapApp creates smaller previews for faster gallery browsing; original files remain available for downloads."}</p>
   <input ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" onChange={choose} hidden aria-label="Choose photos" disabled={running||optimizing||archived}/>
