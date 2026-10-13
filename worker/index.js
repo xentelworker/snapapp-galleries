@@ -163,14 +163,14 @@ export default {
       const photo = await env.DB.prepare("SELECT * FROM photos WHERE id=?").bind(photoMatch[1]).first();
       if (!photo) return new Response("Not found", { status: 404 });
       await archiveDue(env);
-      const gallery = await env.DB.prepare("SELECT status FROM galleries WHERE id=?").bind(photo.gallery_id).first();
+      const gallery = await env.DB.prepare("SELECT status,visibility,password_hash FROM galleries WHERE id=?").bind(photo.gallery_id).first();
       if (gallery?.status === "archived" && !(await requireAdmin(request,env))) return new Response("This gallery has been archived.", {status:410,headers:{"cache-control":"no-store"}});
       const object = await env.PHOTOS.get(photo.storage_key);
       if (!object) return new Response("Not found", { status: 404 });
       const headers = new Headers();
       object.writeHttpMetadata(headers);
       headers.set("etag", object.httpEtag);
-      headers.set("cache-control", "private, no-store");
+      headers.set("cache-control", gallery?.status === "published" && gallery?.visibility === "public" && !gallery?.password_hash ? "public, max-age=86400" : "private, no-store");
       headers.set("x-content-type-options", "nosniff");
       return new Response(object.body, { headers });
     }
