@@ -26,7 +26,7 @@ async function galleryBySlug(env, slug) {
 async function listPhotos(env, galleryId) {
   const result = await env.DB.prepare(
     `SELECT p.id,p.original_filename,p.storage_key,p.thumbnail_key,p.width,p.height,p.created_at,
-            s.name AS set_name,s.slug AS set_slug
+            p.cover_key,s.name AS set_name,s.slug AS set_slug
        FROM photos p LEFT JOIN gallery_sets s ON s.id=p.set_id
       WHERE p.gallery_id=? ORDER BY p.sort_order,p.created_at`
   ).bind(galleryId).all();
