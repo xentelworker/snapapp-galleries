@@ -19,7 +19,7 @@ export async function manageGalleries(request,env) {
   const gallery=await env.DB.prepare("SELECT "+fields+" FROM galleries g WHERE g.id=?").bind(galleryId).first();
   if(!gallery)return json({error:"Gallery not found."},404);
   if(request.method==="GET"){
-   const photos=await env.DB.prepare("SELECT id,original_filename,mime_type,bytes,created_at FROM photos WHERE gallery_id=? ORDER BY sort_order,created_at").bind(galleryId).all();
+   const photos=await env.DB.prepare("SELECT id,original_filename,mime_type,bytes,thumbnail_key,cover_key,created_at FROM photos WHERE gallery_id=? ORDER BY sort_order,created_at").bind(galleryId).all();
    return json({gallery,photos:photos.results||[]});
   }
   if(request.method!=="PATCH")return json({error:"Method not allowed."},405);
