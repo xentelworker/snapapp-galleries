@@ -158,6 +158,34 @@ export default {
       return json({ ok: true, photoId, key }, 201);
     }
 
+    const variantsMatch = path.match(/^\/api\/admin\/galleries\/([^/]+)\/photos\/([^/]+)\/variants$/);
+    if (variantsMatch && request.method === "POST") {
+      if (!(await requireAdmin(request, env))) return json({ error: "unauthorized" }, 401);
+      const galleryId = decodeURIComponent(variantsMatch[1]);
+      const photoId = decodeURIComponent(variantsMatch[2]);
+      const photo = await env.DB.prepare("SELECT id,storage_key FROM photos WHERE id=? AND gallery_id=?").bind(photoId, galleryId).first();
+      if (!photo) return json({ error: "Photo not found in this gallery." }, 404);
+      let form;
+      try { form = await request.formData(); } catch { return json({ error: "Invalid image variants." }, 400); }
+      const thumbnail = form.get("thumbnail");
+      const coverVariant = form.get("cover");
+      const valid = file => file instanceof File && /^image\/(webp|jpeg|png)$/.test(file.type) && file.size > 0 && file.size <= 3 * 1024 * 1024;
+      if (!valid(thumbnail) || !valid(coverVariant)) return json({ error: "Optimized thumbnail and cover images are required (up to 3 MB each)." }, 400);
+      const thumbnailKey = `galleries/${galleryId}/previews/${photoId}-thumb`;
+      const coverKey = `galleries/${galleryId}/previews/${photoId}-cover`;
+      try {
+        await Promise.all([
+          env.PHOTOS.put(thumbnailKey, await thumbnail.arrayBuffer(), { httpMetadata: { contentType: thumbnail.type, cacheControl: "public, max-age=31536000, immutable" } }),
+          env.PHOTOS.put(coverKey, await coverVariant.arrayBuffer(), { httpMetadata: { contentType: coverVariant.type, cacheControl: "public, max-age=31536000, immutable" } })
+        ]);
+        await env.DB.prepare("UPDATE photos SET thumbnail_key=?,cover_key=? WHERE id=? AND gallery_id=?").bind(thumbnailKey, coverKey, photoId, galleryId).run();
+        return json({ ok: true, photoId, thumbnailBytes: thumbnail.size, coverBytes: coverVariant.size });
+      } catch (error) {
+        console.error("photo variant save failed", { galleryId, photoId, error: String(error?.stack || error) });
+        return json({ error: "Unable to save optimized previews. The original photo is safe; retry optimization." }, 500);
+      }
+    }
+
     const photoMatch = path.match(/^\/media\/([^/]+)$/);
     if (photoMatch && request.method === "GET") {
       const photo = await env.DB.prepare("SELECT * FROM photos WHERE id=?").bind(photoMatch[1]).first();
@@ -165,12 +193,14 @@ export default {
       await archiveDue(env);
       const gallery = await env.DB.prepare("SELECT status,visibility,password_hash FROM galleries WHERE id=?").bind(photo.gallery_id).first();
       if (gallery?.status === "archived" && !(await requireAdmin(request,env))) return new Response("This gallery has been archived.", {status:410,headers:{"cache-control":"no-store"}});
-      const object = await env.PHOTOS.get(photo.storage_key);
+      const variant = url.searchParams.get("size");
+      const requestedKey = variant === "thumb" ? photo.thumbnail_key : variant === "cover" ? photo.cover_key : null;
+      const object = await env.PHOTOS.get(requestedKey || photo.storage_key);
       if (!object) return new Response("Not found", { status: 404 });
       const headers = new Headers();
       object.writeHttpMetadata(headers);
       headers.set("etag", object.httpEtag);
-      headers.set("cache-control", gallery?.status === "published" && gallery?.visibility === "public" && !gallery?.password_hash ? "public, max-age=86400" : "private, no-store");
+      headers.set("cache-control", gallery?.status === "published" && gallery?.visibility === "public" && !gallery?.password_hash ? (requestedKey ? "public, max-age=31536000, immutable" : "public, max-age=86400") : "private, no-store");
       headers.set("x-content-type-options", "nosniff");
       return new Response(object.body, { headers });
     }
