@@ -104,7 +104,7 @@ function App() {
         {photos.length === 0 ? <p>No photos have been added to this gallery yet.</p> :
         <div className="grid">{photos.map((p,i)=>(
           <article className="photo-card" key={p.id}>
-            <img src={photoUrl(p)} alt={p.original_filename || ""} onClick={()=>setActive(i)}/>
+            <img src={photoUrl(p)} alt={p.original_filename || ""} loading={i<4?"eager":"lazy"} decoding="async" fetchPriority={i===0?"high":"auto"} onClick={()=>setActive(i)}/>
             <div className="photo-actions">
               <button onClick={()=>toggleFavorite(i)} className={favorites.has(i)?"selected":""}><Heart size={18} fill={favorites.has(i)?"currentColor":"none"}/></button>
               {gallery.downloads_enabled !== 0 && <button onClick={()=>downloadPhoto(p)}><Download size={18}/></button>}
@@ -118,7 +118,7 @@ function App() {
       {active !== null && photos[active] && <div className="lightbox">
         <button className="close" onClick={()=>setActive(null)}><X/></button>
         {photos.length>1 && <button className="nav left" onClick={prev}><ChevronLeft/></button>}
-        <img src={photoUrl(photos[active])} alt={photos[active].original_filename || ""}/>
+        <img src={photoUrl(photos[active])} alt={photos[active].original_filename || ""} decoding="async" fetchPriority="high"/>
         {photos.length>1 && <button className="nav right" onClick={next}><ChevronRight/></button>}
         <div className="lightbox-actions">
           <button onClick={()=>toggleFavorite(active)}><Heart size={18}/> Favorite</button>
