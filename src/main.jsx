@@ -43,14 +43,14 @@ function App() {
     } catch (e) { setError(e.message); }
   }
 
-  const photoUrl = p => "/media/" + encodeURIComponent(p.id);
+  const photoUrl = (p, size) => "/media/" + encodeURIComponent(p.id) + (size ? "?size=" + encodeURIComponent(size) : "");
   const toggleFavorite = i => setFavorites(prev => {
     const next = new Set(prev); next.has(i) ? next.delete(i) : next.add(i); return next;
   });
   const prev = () => setActive(i => i === 0 ? photos.length - 1 : i - 1);
   const next = () => setActive(i => i === photos.length - 1 ? 0 : i + 1);
   const coverPhoto = photos.find(p => p.id === gallery?.cover_photo_id) || photos[0];
-  const cover = coverPhoto ? photoUrl(coverPhoto) : "";
+  const cover = coverPhoto ? photoUrl(coverPhoto, "cover") : "";
   const downloadPhoto = p => {
     const a = document.createElement("a"); a.href = photoUrl(p); a.download = p.original_filename || "photo"; a.click();
   };
@@ -104,7 +104,7 @@ function App() {
         {photos.length === 0 ? <p>No photos have been added to this gallery yet.</p> :
         <div className="grid">{photos.map((p,i)=>(
           <article className="photo-card" key={p.id}>
-            <img src={photoUrl(p)} alt={p.original_filename || ""} loading={i<4?"eager":"lazy"} decoding="async" fetchPriority={i===0?"high":"auto"} onClick={()=>setActive(i)}/>
+            <img src={photoUrl(p,"thumb")} alt={p.original_filename || ""} loading={i<4?"eager":"lazy"} decoding="async" fetchPriority={i===0?"high":"auto"} onClick={()=>setActive(i)}/>
             <div className="photo-actions">
               <button onClick={()=>toggleFavorite(i)} className={favorites.has(i)?"selected":""}><Heart size={18} fill={favorites.has(i)?"currentColor":"none"}/></button>
               {gallery.downloads_enabled !== 0 && <button onClick={()=>downloadPhoto(p)}><Download size={18}/></button>}
