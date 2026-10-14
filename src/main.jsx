@@ -64,7 +64,7 @@ function App() {
       : "";
     if (gallery.has_download_pin && downloadPin === null) return;
     setDownloadingZip(true); setError("");
-    const targetPartBytes = 64 * 1024 * 1024;
+    const targetPartBytes = 16 * 1024 * 1024;
     const maxPartBytes = 96 * 1024 * 1024;
     const batches = [];
     let batch = [], batchBytes = 0;
