@@ -117,7 +117,7 @@ export default {
       return json({ error: "Couldn't choose an available gallery address. Please try again." }, 409);
     }
 
-    const zipMatch = path.match(/^\\/api\\/galleries\\/([^/]+)\\/download\\.zip$/);
+    const zipMatch = path.match(/^\/api\/galleries\/([^/]+)\/download\.zip$/);
     if (zipMatch && request.method === "POST") return downloadGalleryZip(request, env, decodeURIComponent(zipMatch[1]));
 
     const publicMatch = path.match(/^\/api\/galleries\/([^/]+)$/);
