@@ -16,7 +16,7 @@ function uniqueFilename(original, used, index) {
 function localHeader(name, crc, size, dt) { return le(30, [[0,0x04034b50,4],[4,20,2],[6,0x0800,2],[8,0,2],[10,dt.time,2],[12,dt.date,2],[14,crc,4],[18,size,4],[22,size,4],[26,name.length,2],[28,0,2]]); }
 function centralHeader(name, crc, size, offset, dt) { return le(46, [[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x0800,2],[10,0,2],[12,dt.time,2],[14,dt.date,2],[16,crc,4],[20,size,4],[24,size,4],[28,name.length,2],[30,0,2],[32,0,2],[34,0,2],[36,0,2],[38,0,4],[42,offset,4]]); }
 function endRecord(count, centralSize, centralOffset) { return le(22, [[0,0x06054b50,4],[4,0,2],[6,0,2],[8,count,2],[10,count,2],[12,centralSize,4],[16,centralOffset,4],[20,0,2]]); }
-export async function downloadGalleryZip(request, env, slug) {
+async function buildGalleryZip(request, env, slug) {
   const gallery = await env.DB.prepare("SELECT id,slug,title,status,downloads_enabled,password_hash FROM galleries WHERE slug=?").bind(slug).first();
   if (!gallery || gallery.status !== "published") return json({ error: "This gallery is unavailable." }, 404);
   if (!gallery.downloads_enabled) return json({ error: "Downloads are disabled for this gallery." }, 403);
@@ -40,8 +40,9 @@ export async function downloadGalleryZip(request, env, slug) {
     const photo = photos[i];
     const object = await env.PHOTOS.get(photo.storage_key);
     if (!object) {
-      console.error("Gallery ZIP photo missing from R2", { slug, photoId: photo.id, storageKey: photo.storage_key });
-      continue;
+      const error = new Error("A gallery photo is missing from R2 storage.");
+      error.zipFailureCode = "PHOTO_MISSING";
+      throw error;
     }
     const bytes = new Uint8Array(await object.arrayBuffer());
     if (bytes.byteLength > 0xffffffff || offset + bytes.byteLength > 0xffffffff) return json({ error: "This gallery is too large for a single ZIP file. Please download photos individually." }, 413);
@@ -70,4 +71,32 @@ export async function downloadGalleryZip(request, env, slug) {
   let cursor = 0;
   for (const chunk of chunks) { archive.set(chunk, cursor); cursor += chunk.byteLength; }
   return new Response(archive, { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${safeSlug}-photos.zip"`, "content-length": String(archive.byteLength), "x-snapapp-zip-photos": String(included), "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+}
+
+
+/**
+ * Convert unexpected D1/R2/ZIP failures into a traceable JSON response.
+ * Cloudflare's default HTML 500 page hides the cause from the gallery UI.
+ */
+export async function downloadGalleryZip(request, env, slug) {
+  const reference = crypto.randomUUID();
+  try {
+    return await buildGalleryZip(request, env, slug);
+  } catch (error) {
+    const code = error?.zipFailureCode || "ZIP_BUILD_FAILED";
+    console.error("Gallery ZIP request failed", {
+      reference,
+      code,
+      slug,
+      error: String(error?.stack || error)
+    });
+    const message = code === "PHOTO_MISSING"
+      ? "A gallery photo is missing from storage. Ask the gallery owner to re-upload it."
+      : "The ZIP could not be prepared because the gallery or its images could not be read. Please retry.";
+    return json({
+      error: `${message} Reference: ${reference}`,
+      code,
+      reference
+    }, 500);
+  }
 }
