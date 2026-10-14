@@ -1,8 +1,28 @@
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 const encoder = new TextEncoder();
-const crcTable = new Uint32Array(256);
-for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crcTable[n] = c >>> 0; }
-function updateCrc(crc, bytes) { for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8); return crc >>> 0; }
+// Slicing-by-8 keeps ZIP checksum work fast enough for large photo batches.
+const crcTables = Array.from({ length: 8 }, () => new Uint32Array(256));
+for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; crcTables[0][n] = c >>> 0; }
+for (let table = 1; table < crcTables.length; table++) {
+  for (let n = 0; n < 256; n++) {
+    const previous = crcTables[table - 1][n];
+    crcTables[table][n] = (crcTables[0][previous & 0xff] ^ (previous >>> 8)) >>> 0;
+  }
+}
+function updateCrc(crc, bytes) {
+  let index = 0;
+  const limit = bytes.length - 7;
+  for (; index < limit; index += 8) {
+    const value = crc ^ (bytes[index] | (bytes[index + 1] << 8) | (bytes[index + 2] << 16) | (bytes[index + 3] << 24));
+    crc = crcTables[7][value & 0xff] ^ crcTables[6][(value >>> 8) & 0xff] ^
+      crcTables[5][(value >>> 16) & 0xff] ^ crcTables[4][value >>> 24] ^
+      crcTables[3][bytes[index + 4]] ^ crcTables[2][bytes[index + 5]] ^
+      crcTables[1][bytes[index + 6]] ^ crcTables[0][bytes[index + 7]];
+  }
+  const table = crcTables[0];
+  for (; index < bytes.length; index++) crc = table[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
+  return crc >>> 0;
+}
 function le(size, values) { const out = new Uint8Array(size); const view = new DataView(out.buffer); for (const [offset, value, bytes] of values) { if (bytes === 2) view.setUint16(offset, value, true); else view.setUint32(offset, value, true); } return out; }
 function dosDateTime(date = new Date()) { return { time: (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2), date: ((Math.max(1980, date.getFullYear()) - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate() }; }
 function uniqueFilename(original, used, index) {
