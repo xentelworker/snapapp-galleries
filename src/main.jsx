@@ -85,7 +85,16 @@ function App() {
         throw new Error(message);
       }
       const photoCount = Number(response.headers.get("x-snapapp-zip-photos") || 0);
-      const blob = await response.blob();
+      let blob;
+      try {
+        blob = await response.blob();
+      } catch {
+        const ray = response.headers.get("cf-ray");
+        let message = "The ZIP stream stopped before the archive finished. The incomplete file was not saved. Retry once.";
+        if (ray) message += " If it repeats, give the gallery owner Cloudflare Ray ID " + ray + ".";
+        else message += " If it repeats, contact the gallery owner and report the time of the attempt.";
+        throw new Error(message);
+      }
       if (!blob.size || !photoCount || !blob.type.includes("zip")) {
         throw new Error("The server returned an empty or invalid ZIP file. Please try again; if it repeats, contact the gallery owner.");
       }
