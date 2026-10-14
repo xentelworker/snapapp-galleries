@@ -18,7 +18,7 @@ function dataDescriptor(crc, size) { return le(16, [[0,0x08074b50,4],[4,crc,4],[
 function centralHeader(name, crc, size, offset, dt) { return le(46, [[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x0808,2],[10,0,2],[12,dt.time,2],[14,dt.date,2],[16,crc,4],[20,size,4],[24,size,4],[28,name.length,2],[30,0,2],[32,0,2],[34,0,2],[36,0,2],[38,0,4],[42,offset,4]]); }
 function endRecord(count, centralSize, centralOffset) { return le(22, [[0,0x06054b50,4],[4,0,2],[6,0,2],[8,count,2],[10,count,2],[12,centralSize,4],[16,centralOffset,4],[20,0,2]]); }
 
-async function buildGalleryZip(request, env, slug) {
+async function buildGalleryZip(request, env, slug, reference) {
   const gallery = await env.DB.prepare("SELECT id,slug,title,status,downloads_enabled,password_hash,download_pin_hash FROM galleries WHERE slug=?").bind(slug).first();
   if (!gallery || gallery.status !== "published") return json({ error: "This gallery is unavailable." }, 404);
   if (!gallery.downloads_enabled) return json({ error: "Downloads are disabled for this gallery." }, 403);
@@ -105,13 +105,13 @@ async function buildGalleryZip(request, env, slug) {
         if (item.done) controller.close();
         else controller.enqueue(item.value);
       } catch (error) {
-        console.error("Gallery ZIP generation failed", { slug, code: error?.zipFailureCode || "ZIP_STREAM_FAILED", error: String(error?.stack || error) });
+        console.error("Gallery ZIP generation failed", { reference, slug, code: error?.zipFailureCode || "ZIP_STREAM_FAILED", error: String(error?.stack || error) });
         controller.error(error);
       }
     },
     async cancel() { if (iterator.return) await iterator.return(); }
   });
-  return new Response(stream, { headers: { "content-type": "application/zip", "content-disposition": "attachment; filename=\"" + safeSlug + "-photos.zip\"", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-snapapp-zip-photos": String(photos.length) } });
+  return new Response(stream, { headers: { "content-type": "application/zip", "content-disposition": "attachment; filename=\"" + safeSlug + "-photos.zip\"", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-snapapp-zip-photos": String(photos.length), "x-snapapp-zip-reference": reference } });
 }
 
 /**
@@ -121,7 +121,7 @@ async function buildGalleryZip(request, env, slug) {
 export async function downloadGalleryZip(request, env, slug) {
   const reference = crypto.randomUUID();
   try {
-    return await buildGalleryZip(request, env, slug);
+    return await buildGalleryZip(request, env, slug, reference);
   } catch (error) {
     const code = error?.zipFailureCode || "ZIP_BUILD_FAILED";
     console.error("Gallery ZIP request failed", { reference, code, slug, error: String(error?.stack || error) });
