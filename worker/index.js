@@ -27,7 +27,7 @@ async function galleryBySlug(env, slug) {
 async function listPhotos(env, galleryId) {
   try {
     const result = await env.DB.prepare(
-      `SELECT p.id,p.original_filename,p.storage_key,p.thumbnail_key,p.cover_key,p.width,p.height,p.created_at,
+      `SELECT p.id,p.original_filename,p.storage_key,p.thumbnail_key,p.cover_key,p.width,p.height,p.bytes,p.created_at,
               s.name AS set_name,s.slug AS set_slug
          FROM photos p LEFT JOIN gallery_sets s ON s.id=p.set_id
         WHERE p.gallery_id=? ORDER BY p.sort_order,p.created_at`
@@ -35,7 +35,7 @@ async function listPhotos(env, galleryId) {
     return result.results || [];
   } catch {
     const result = await env.DB.prepare(
-      `SELECT p.id,p.original_filename,p.storage_key,p.thumbnail_key,p.width,p.height,p.created_at,
+      `SELECT p.id,p.original_filename,p.storage_key,p.thumbnail_key,p.width,p.height,p.bytes,p.created_at,
               s.name AS set_name,s.slug AS set_slug
          FROM photos p LEFT JOIN gallery_sets s ON s.id=p.set_id
         WHERE p.gallery_id=? ORDER BY p.sort_order,p.created_at`
