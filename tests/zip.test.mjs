@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { downloadGalleryZip } from "../worker/zip.js";
+import { validateZipBlob } from "../src/zip-validation.js";
 
 const encoder = new TextEncoder();
 const hash = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)))]
@@ -56,7 +57,10 @@ test("builds a valid single-photo ZIP", async () => {
   assert.ok(response.headers.get("content-type").includes("application/zip"));
   assert.equal(response.headers.get("x-snapapp-zip-photos"), "1");
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const blob = await response.blob();
+  assert.equal(await validateZipBlob(blob, 1), true);
+  assert.equal(await validateZipBlob(blob.slice(0, blob.size - 22), 1), false);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
   assert.deepEqual([...bytes.slice(0, 4)], [0x50, 0x4b, 0x03, 0x04]);
   assert.deepEqual([...bytes.slice(-22, -18)], [0x50, 0x4b, 0x05, 0x06]);
 });
