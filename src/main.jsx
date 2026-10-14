@@ -69,11 +69,25 @@ function App() {
         try { const data = await response.json(); if (data.error) message = data.error; } catch {}
         throw new Error(message);
       }
-      const blob = await response.blob(); const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = (gallery.slug || "gallery") + "-photos.zip";
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (e) { setError(e.message || "Unable to create the ZIP download."); }
-    finally { setDownloadingZip(false); }
+      const photoCount = Number(response.headers.get("x-snapapp-zip-photos") || 0);
+      const blob = await response.blob();
+      if (!blob.size || !photoCount || !blob.type.includes("zip")) {
+        throw new Error("The server returned an empty or invalid ZIP file. Please try again; if it repeats, contact the gallery owner.");
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = (gallery.slug || "gallery") + "-photos.zip";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+    } catch (e) {
+      const message = e.message || "Unable to create the ZIP download.";
+      setError(message);
+      window.alert(message);
+    } finally { setDownloadingZip(false); }
   };
   const share = async () => {
     try { if (navigator.share) await navigator.share({ title: gallery.title, url: location.href }); else await navigator.clipboard.writeText(location.href); } catch {}
