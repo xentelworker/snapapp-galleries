@@ -3,6 +3,7 @@ import { archiveDue, lifecycleValues } from "./lifecycle.js";
 import { browserUpload } from "./browser-upload.js";
 import { adminUser, handleAuth } from "./auth.js";
 import { downloadGalleryZip } from "./zip.js";
+import { handleZipJobRequest, processZipQueue, cleanupZipJobs } from "./zip-jobs.js";
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
@@ -44,10 +45,14 @@ async function listPhotos(env, galleryId) {
   }
 }
 export default {
-  async scheduled(event, env, ctx) { ctx.waitUntil(archiveDue(env)); },
+  async scheduled(event, env, ctx) { ctx.waitUntil(Promise.all([archiveDue(env), cleanupZipJobs(env)])); },
+  async queue(batch, env) { await processZipQueue(batch, env); },
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
+
+    const zipJobResponse = await handleZipJobRequest(request, env, path);
+    if (zipJobResponse) return zipJobResponse;
 
     if (path.startsWith("/api/auth/")) return handleAuth(request, env);
 
@@ -137,7 +142,7 @@ export default {
       if (!gallery.password_hash) return json({ ok: true });
       const body = await request.json();
       if (await sha256(body.password || "") !== gallery.password_hash) return json({ error: "invalid_password" }, 401);
-      return json({ ok: true, gallery: { ...gallery, password_hash: undefined, download_pin_hash: undefined }, photos: await listPhotos(env, gallery.id) });
+      return json({ ok: true, gallery: { ...gallery, password_hash: undefined, download_pin_hash: undefined, has_download_pin: !!gallery.download_pin_hash }, photos: await listPhotos(env, gallery.id) });
     }
 
     const uploadMatch = path.match(/^\/api\/upload\/([^/]+)$/);

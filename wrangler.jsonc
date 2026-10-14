@@ -41,5 +41,24 @@
     "crons": [
       "0 * * * *"
     ]
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "ZIP_QUEUE",
+        "queue": "snapapp-gallery-zip-jobs"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "snapapp-gallery-zip-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 2
+      }
+    ]
+  },
+  "limits": {
+    "cpu_ms": 300000
   }
 }

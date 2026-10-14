@@ -47,3 +47,17 @@ Open `/admin.html` and sign in with the authorized Audio Guestbook email and pas
 `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` (public, not a service key), and `ADMIN_USER_ID` configure authentication. The former `ADMIN_TOKEN` is no longer accepted. No passwords or service-role keys belong in the repository.
 
 Run authentication checks with `node --test tests/auth.test.mjs`.
+
+
+## Background gallery ZIP downloads
+
+Large galleries are prepared as one ZIP in the background. Visitors enter an email address, and SnapApp emails a private download link when the ZIP is ready. The archive is kept in the existing private R2 bucket and expires after 48 hours. Password and download PIN checks happen when the visitor requests the job; the download-enabled setting is checked again when the link is used.
+
+Before deploying this feature to a new environment:
+
+1. Create the Cloudflare Queue named `snapapp-gallery-zip-jobs`.
+2. Apply the new D1 migration with `npm run db:migrate:remote`.
+3. Configure a verified Resend sender, then add Worker secrets `ZIP_EMAIL_API_KEY` and `ZIP_EMAIL_FROM` (for example, `SnapApp Galleries <galleries@your-verified-domain>`). Never commit these values.
+4. Deploy the Worker and frontend.
+
+The Worker returns a clear notice if email is not configured. ZIP preparation can still finish and be downloaded from the open gallery page. Queue retries, private expiring download tokens, and scheduled archive cleanup are enabled.

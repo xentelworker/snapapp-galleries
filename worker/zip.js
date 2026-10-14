@@ -38,24 +38,24 @@ function dataDescriptor(crc, size) { return le(16, [[0,0x08074b50,4],[4,crc,4],[
 function centralHeader(name, crc, size, offset, dt) { return le(46, [[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x0808,2],[10,0,2],[12,dt.time,2],[14,dt.date,2],[16,crc,4],[20,size,4],[24,size,4],[28,name.length,2],[30,0,2],[32,0,2],[34,0,2],[36,0,2],[38,0,4],[42,offset,4]]); }
 function endRecord(count, centralSize, centralOffset) { return le(22, [[0,0x06054b50,4],[4,0,2],[6,0,2],[8,count,2],[10,count,2],[12,centralSize,4],[16,centralOffset,4],[20,0,2]]); }
 
-async function buildGalleryZip(request, env, slug, reference) {
+async function buildGalleryZip(request, env, slug, reference, preauthorized = false) {
   const gallery = await env.DB.prepare("SELECT id,slug,title,status,downloads_enabled,password_hash,download_pin_hash FROM galleries WHERE slug=?").bind(slug).first();
   if (!gallery || gallery.status !== "published") return json({ error: "This gallery is unavailable." }, 404);
   if (!gallery.downloads_enabled) return json({ error: "Downloads are disabled for this gallery." }, 403);
   let body = {}; try { body = await request.json(); } catch {}
-  if (gallery.password_hash) {
+  if (!preauthorized && gallery.password_hash) {
     const supplied = await crypto.subtle.digest("SHA-256", encoder.encode(String(body.password || "")));
     const digest = [...new Uint8Array(supplied)].map(b => b.toString(16).padStart(2, "0")).join("");
     if (digest !== gallery.password_hash) return json({ error: "Unlock this gallery before downloading." }, 401);
   }
-  if (gallery.download_pin_hash) {
+  if (!preauthorized && gallery.download_pin_hash) {
     const suppliedPin = await crypto.subtle.digest("SHA-256", encoder.encode(String(body.downloadPin || "")));
     const pinDigest = [...new Uint8Array(suppliedPin)].map(b => b.toString(16).padStart(2, "0")).join("");
     if (pinDigest !== gallery.download_pin_hash) return json({ error: "Enter the correct download PIN to download this gallery.", code: "INVALID_DOWNLOAD_PIN" }, 401);
   }
 
   let requestedIds = null;
-  if (body.photoIds !== undefined) {
+  if (!preauthorized && body.photoIds !== undefined) {
     if (!Array.isArray(body.photoIds) || body.photoIds.length < 1 || body.photoIds.length > 50 ||
         body.photoIds.some(id => typeof id !== "string" || !id || id.length > 120)) {
       return json({ error: "Choose between 1 and 50 valid photos for each ZIP part.", code: "INVALID_ZIP_PHOTO_LIST" }, 400);
@@ -70,7 +70,7 @@ async function buildGalleryZip(request, env, slug, reference) {
   const photos = result.results || [];
   if (requestedIds && photos.length !== requestedIds.length) return json({ error: "One or more selected photos are no longer available in this gallery." }, 404);
   const knownBytes = photos.reduce((total, photo) => total + Math.max(0, Number(photo.bytes) || 0), 0);
-  if (knownBytes > 96 * 1024 * 1024) return json({ error: "This ZIP part is too large. Select fewer photos and try again.", code: "ZIP_PART_TOO_LARGE" }, 413);
+  if (!preauthorized && knownBytes > 96 * 1024 * 1024) return json({ error: "This ZIP part is too large. Select fewer photos and try again.", code: "ZIP_PART_TOO_LARGE" }, 413);
   if (photos.length > 65535) return json({ error: "This gallery has too many files for a single ZIP archive." }, 413);
   if (!photos.length) return json({ error: "There are no photos available to download in this gallery." }, 404);
 
@@ -167,4 +167,17 @@ export async function downloadGalleryZip(request, env, slug) {
         : "The ZIP could not be prepared because the gallery or its images could not be read. Please retry.";
     return json({ error: message + " Reference: " + reference, code, reference }, code === "ZIP64_REQUIRED" ? 413 : 500);
   }
+}
+
+
+export async function createGalleryZipForAuthorizedJob(env, slug, reference) {
+  const request = new Request("https://snapapp-internal.invalid/", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+  const response = await buildGalleryZip(request, env, slug, reference, true);
+  if (!response.ok || !response.body || !response.headers.get("content-type")?.includes("application/zip")) {
+    const detail = await response.json().catch(() => ({}));
+    const error = new Error(detail.error || "The gallery ZIP could not be generated.");
+    error.zipFailureCode = detail.code || "ZIP_BUILD_FAILED";
+    throw error;
+  }
+  return response;
 }

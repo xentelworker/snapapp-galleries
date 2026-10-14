@@ -18,6 +18,7 @@ function App() {
   const [password, setPassword] = useState("");
   const [unlockedPassword, setUnlockedPassword] = useState("");
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [zipJob, setZipJob] = useState(null);
 
   async function load() {
     if (!slug) { setError("Gallery not found."); setLoading(false); return; }
@@ -33,6 +34,27 @@ function App() {
   }
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!zipJob || !["queued", "processing"].includes(zipJob.status)) return;
+    let stopped = false;
+    const poll = async () => {
+      try {
+        const response = await fetch("/api/zip-jobs/" + encodeURIComponent(zipJob.id) + "?token=" + encodeURIComponent(zipJob.token), { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to check ZIP preparation status.");
+        if (!stopped) {
+          setZipJob(current => current?.id === zipJob.id ? { ...current, ...data } : current);
+          if (data.status === "failed") setError(data.error || "ZIP preparation failed. Please try again or contact the gallery owner.");
+        }
+      } catch (e) {
+        if (!stopped) setError(e.message || "Unable to check ZIP preparation status.");
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 5000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [zipJob?.id, zipJob?.token, zipJob?.status]);
 
   async function unlock(e) {
     e.preventDefault(); setError("");
@@ -58,83 +80,26 @@ function App() {
     const a = document.createElement("a"); a.href = photoUrl(p); a.download = p.original_filename || "photo"; a.click();
   };
   const downloadAll = async () => {
-    if (downloadingZip) return;
+    if (downloadingZip || ["queued", "processing"].includes(zipJob?.status)) return;
+    const email = window.prompt("Where should we email the download link when your ZIP is ready?");
+    if (email === null) return;
+    if (!email.trim()) { window.alert("Enter an email address so we can send the download link."); return; }
     const downloadPin = gallery.has_download_pin
       ? window.prompt("Enter the download PIN to download this gallery.")
       : "";
     if (gallery.has_download_pin && downloadPin === null) return;
-    setDownloadingZip(true); setError("");
-    const targetPartBytes = 16 * 1024 * 1024;
-    const maxPartBytes = 96 * 1024 * 1024;
-    const batches = [];
-    let batch = [], batchBytes = 0;
-    for (const photo of photos) {
-      const photoBytes = Math.max(0, Number(photo.bytes) || 0);
-      if (photoBytes > maxPartBytes) {
-        const message = (photo.original_filename || "A photo") + " is larger than 96 MB and cannot be included in a ZIP part. Download that photo individually.";
-        setDownloadingZip(false); setError(message); window.alert(message); return;
-      }
-      if (batch.length && (batchBytes + photoBytes > targetPartBytes || batch.length >= 50)) {
-        batches.push(batch); batch = []; batchBytes = 0;
-      }
-      batch.push(photo); batchBytes += photoBytes;
-    }
-    if (batch.length) batches.push(batch);
+    setDownloadingZip(true); setError(""); setZipJob(null);
     try {
-      for (let i = 0; i < batches.length; i++) {
-        const part = batches[i];
-        const response = await fetch("/api/galleries/" + encodeURIComponent(slug) + "/download.zip", {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ password: unlockedPassword, downloadPin, photoIds: part.map(photo => photo.id) })
-        });
-        if (!response.ok) {
-          let message = "";
-          try {
-            const data = await response.json();
-            if (typeof data.error === "string") message = data.error;
-          } catch {}
-          if (!message) {
-            const ray = response.headers.get("cf-ray");
-            message = "The ZIP request failed (HTTP " + response.status + "). Refresh the gallery and retry.";
-            if (ray) message += " Give the gallery owner Cloudflare Ray ID " + ray + ".";
-          }
-          throw new Error(message);
-        }
-        let blob;
-        try {
-          blob = await response.blob();
-        } catch {
-          const reference = response.headers.get("x-snapapp-zip-reference");
-          const ray = response.headers.get("cf-ray");
-          let message = "ZIP part " + (i + 1) + " stopped before it finished.";
-          if (reference) message += " Give the gallery owner ZIP error ID " + reference + ".";
-          else if (ray) message += " Give the gallery owner Cloudflare Ray ID " + ray + ".";
-          throw new Error(message);
-        }
-        if (!blob.size || !blob.type.includes("zip") || !(await validateZipBlob(blob, part.length))) {
-          const reference = response.headers.get("x-snapapp-zip-reference");
-          let message = "ZIP part " + (i + 1) + " did not pass its completeness check. No incomplete file was saved.";
-          if (reference) message += " Give the gallery owner ZIP error ID " + reference + ".";
-          throw new Error(message);
-        }
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = batches.length === 1
-          ? (gallery.slug || "gallery") + "-photos.zip"
-          : (gallery.slug || "gallery") + "-photos-" + String(i + 1).padStart(3, "0") + "-of-" + String(batches.length).padStart(3, "0") + ".zip";
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 120000);
-        if (i + 1 < batches.length) await new Promise(resolve => window.setTimeout(resolve, 500));
-      }
+      const response = await fetch("/api/galleries/" + encodeURIComponent(slug) + "/zip-jobs", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password: unlockedPassword, downloadPin })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to start ZIP preparation. Please try again.");
+      setZipJob({ id: data.jobId, token: data.accessToken, email: email.trim(), status: "queued" });
     } catch (e) {
-      let message = e.message || "Unable to create the ZIP download.";
-      if (batches.length > 1) message += " " + batches.length + " ZIP parts were planned; earlier completed parts may already be in your Downloads folder.";
-      setError(message);
-      window.alert(message);
+      setError(e.message || "Unable to start ZIP preparation. Please try again.");
+      window.alert(e.message || "Unable to start ZIP preparation. Please try again.");
     } finally { setDownloadingZip(false); }
   };
   const share = async () => {
@@ -177,8 +142,10 @@ function App() {
 
       <main id="gallery" className="gallery-shell">
         <div className="gallery-heading"><div><div className="eyebrow dark">CLIENT GALLERY</div><h2>{gallery.title}</h2></div>
-          <nav className="filters"><button className="active">All</button><button onClick={()=>document.querySelector(".selected")?.scrollIntoView({behavior:"smooth"})}>Favorites ({favorites.size})</button>{gallery.downloads_enabled !== 0 && photos.length>0 && <button onClick={downloadAll} disabled={downloadingZip}><Download size={16}/> {downloadingZip ? "Preparing ZIP…" : "Download all"}</button>}</nav>
+          <nav className="filters"><button className="active">All</button><button onClick={()=>document.querySelector(".selected")?.scrollIntoView({behavior:"smooth"})}>Favorites ({favorites.size})</button>{gallery.downloads_enabled !== 0 && photos.length>0 && (zipJob?.status === "ready" ? <button onClick={()=>window.location.assign(zipJob.downloadUrl)}><Download size={16}/> Download ZIP</button> : <button onClick={downloadAll} disabled={downloadingZip || ["queued","processing"].includes(zipJob?.status)}><Download size={16}/> {downloadingZip || ["queued","processing"].includes(zipJob?.status) ? "Preparing ZIP…" : zipJob?.status === "failed" ? "Try ZIP again" : "Prepare ZIP"}</button>)}</nav>
         </div>
+        {zipJob?.status === "queued" || zipJob?.status === "processing" ? <p role="status">Your ZIP is being prepared. You can leave this page; we’ll email the download link to {zipJob.email} when it’s ready.</p> : null}
+        {zipJob?.status === "ready" ? <p role="status">{zipJob.emailStatus === "sent" ? "Your ZIP is ready. We emailed you a secure download link." : "Your ZIP is ready. The email could not be sent, so download it here now."} The link expires in 48 hours.</p> : null}
         {error && <p role="status">{error}</p>}
         {photos.length === 0 ? <p>No photos have been added to this gallery yet.</p> :
         <div className="grid">{photos.map((p,i)=>(

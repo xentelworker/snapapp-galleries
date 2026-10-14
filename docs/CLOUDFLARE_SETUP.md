@@ -42,3 +42,17 @@ Headers:
 - `Content-Type`
 
 The server calculates SHA-256 and avoids duplicate files per gallery.
+
+
+## Background ZIP jobs
+
+Create the queue before deploying the Worker configuration:
+
+```sh
+npx wrangler queues create snapapp-gallery-zip-jobs
+npm run db:migrate:remote
+npx wrangler secret put ZIP_EMAIL_API_KEY
+npx wrangler secret put ZIP_EMAIL_FROM
+```
+
+Use a verified sender address for `ZIP_EMAIL_FROM`. These are Worker secrets, not checked-in configuration. Large ZIPs are streamed into multipart R2 uploads, emailed as private links, and removed after 48 hours. The Worker is configured for up to 5 minutes of CPU per queue invocation; account plan limits still apply.
