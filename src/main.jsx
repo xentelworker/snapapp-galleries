@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Heart, Download, Share2, X, ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import "./styles.css";
+import { validateZipBlob } from "./zip-validation.js";
 
 const slugFromPath = () => decodeURIComponent(location.pathname.replace(/^\/+|\/+$/g, ""));
 
@@ -77,6 +78,9 @@ function App() {
       const blob = await response.blob();
       if (!blob.size || !photoCount || !blob.type.includes("zip")) {
         throw new Error("The server returned an empty or invalid ZIP file. Please try again; if it repeats, contact the gallery owner.");
+      }
+      if (!(await validateZipBlob(blob, photoCount))) {
+        throw new Error("The ZIP download was cut off before the archive finished. Delete the incomplete file and try again. If it happens again, contact the gallery owner.");
       }
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
