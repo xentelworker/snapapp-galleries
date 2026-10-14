@@ -15,6 +15,8 @@ function App() {
   const [error, setError] = useState("");
   const [locked, setLocked] = useState(false);
   const [password, setPassword] = useState("");
+  const [unlockedPassword, setUnlockedPassword] = useState("");
+  const [downloadingZip, setDownloadingZip] = useState(false);
 
   async function load() {
     if (!slug) { setError("Gallery not found."); setLoading(false); return; }
@@ -39,7 +41,7 @@ function App() {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error === "invalid_password" ? "Incorrect password." : "Unable to unlock gallery.");
-      setGallery(data.gallery); setPhotos(data.photos || []); setLocked(false); setPassword("");
+      setGallery(data.gallery); setPhotos(data.photos || []); setLocked(false); setUnlockedPassword(password); setPassword("");
     } catch (e) { setError(e.message); }
   }
 
@@ -55,9 +57,23 @@ function App() {
     const a = document.createElement("a"); a.href = photoUrl(p); a.download = p.original_filename || "photo"; a.click();
   };
   const downloadAll = async () => {
-    for (const p of photos) {
-      const a = document.createElement("a"); a.href = photoUrl(p); a.download = p.original_filename || "photo"; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 250));
-    }
+    if (downloadingZip) return;
+    setDownloadingZip(true); setError("");
+    try {
+      const response = await fetch("/api/galleries/" + encodeURIComponent(slug) + "/download.zip", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: unlockedPassword })
+      });
+      if (!response.ok) {
+        let message = "Unable to create the ZIP download. Please try again.";
+        try { const data = await response.json(); if (data.error) message = data.error; } catch {}
+        throw new Error(message);
+      }
+      const blob = await response.blob(); const url = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = url; a.download = (gallery.slug || "gallery") + "-photos.zip";
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { setError(e.message || "Unable to create the ZIP download."); }
+    finally { setDownloadingZip(false); }
   };
   const share = async () => {
     try { if (navigator.share) await navigator.share({ title: gallery.title, url: location.href }); else await navigator.clipboard.writeText(location.href); } catch {}
@@ -99,8 +115,9 @@ function App() {
 
       <main id="gallery" className="gallery-shell">
         <div className="gallery-heading"><div><div className="eyebrow dark">CLIENT GALLERY</div><h2>{gallery.title}</h2></div>
-          <nav className="filters"><button className="active">All</button><button onClick={()=>document.querySelector(".selected")?.scrollIntoView({behavior:"smooth"})}>Favorites ({favorites.size})</button>{gallery.downloads_enabled !== 0 && photos.length>0 && <button onClick={downloadAll}><Download size={16}/> Download all</button>}</nav>
+          <nav className="filters"><button className="active">All</button><button onClick={()=>document.querySelector(".selected")?.scrollIntoView({behavior:"smooth"})}>Favorites ({favorites.size})</button>{gallery.downloads_enabled !== 0 && photos.length>0 && <button onClick={downloadAll} disabled={downloadingZip}><Download size={16}/> {downloadingZip ? "Preparing ZIP…" : "Download all"}</button>}</nav>
         </div>
+        {error && <p role="status">{error}</p>}
         {photos.length === 0 ? <p>No photos have been added to this gallery yet.</p> :
         <div className="grid">{photos.map((p,i)=>(
           <article className="photo-card" key={p.id}>
