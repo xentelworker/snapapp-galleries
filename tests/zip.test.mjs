@@ -86,6 +86,23 @@ test("streams a multi-chunk photo through the ZIP response", async () => {
   assert.equal(blob.size, photoBytes.byteLength + 30 + new TextEncoder().encode("photo.jpg").length + 16 + 46 + new TextEncoder().encode("photo.jpg").length + 22);
 });
 
+test("builds a ZIP containing only the selected photos", async () => {
+  const response = await downloadGalleryZip(request({ photoIds: ["photo-1"] }), makeEnv(), "sample");
+  assert.equal(response.status, 200);
+  const blob = await response.blob();
+  assert.equal(await validateZipBlob(blob, 1), true);
+});
+
+test("rejects a ZIP part with more than 50 selected photos", async () => {
+  const response = await downloadGalleryZip(
+    request({ photoIds: Array.from({ length: 51 }, (_, index) => "photo-" + index) }),
+    makeEnv(),
+    "sample"
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).code, "INVALID_ZIP_PHOTO_LIST");
+});
+
 test("requires the configured download PIN", async () => {
   const response = await downloadGalleryZip(
     request({ downloadPin: "0000" }),
