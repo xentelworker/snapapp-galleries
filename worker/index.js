@@ -2,6 +2,7 @@ import { manageGalleries } from "./manage.js";
 import { archiveDue, lifecycleValues } from "./lifecycle.js";
 import { browserUpload } from "./browser-upload.js";
 import { adminUser, handleAuth } from "./auth.js";
+import { downloadGalleryZip } from "./zip.js";
 
 const json = (data, status = 200, headers = {}) =>
   new Response(JSON.stringify(data), {
@@ -115,6 +116,9 @@ export default {
       }
       return json({ error: "Couldn't choose an available gallery address. Please try again." }, 409);
     }
+
+    const zipMatch = path.match(/^\\/api\\/galleries\\/([^/]+)\\/download\\.zip$/);
+    if (zipMatch && request.method === "POST") return downloadGalleryZip(request, env, decodeURIComponent(zipMatch[1]));
 
     const publicMatch = path.match(/^\/api\/galleries\/([^/]+)$/);
     if (publicMatch && request.method === "GET") {
