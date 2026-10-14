@@ -112,7 +112,10 @@ function App() {
           throw new Error(message);
         }
         if (!blob.size || !blob.type.includes("zip") || !(await validateZipBlob(blob, part.length))) {
-          throw new Error("ZIP part " + (i + 1) + " did not pass its completeness check. No incomplete file was saved.");
+          const reference = response.headers.get("x-snapapp-zip-reference");
+          let message = "ZIP part " + (i + 1) + " did not pass its completeness check. No incomplete file was saved.";
+          if (reference) message += " Give the gallery owner ZIP error ID " + reference + ".";
+          throw new Error(message);
         }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
