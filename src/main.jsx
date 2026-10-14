@@ -58,11 +58,15 @@ function App() {
   };
   const downloadAll = async () => {
     if (downloadingZip) return;
+    const downloadPin = gallery.has_download_pin
+      ? window.prompt("Enter the download PIN to download this gallery.")
+      : "";
+    if (gallery.has_download_pin && downloadPin === null) return;
     setDownloadingZip(true); setError("");
     try {
       const response = await fetch("/api/galleries/" + encodeURIComponent(slug) + "/download.zip", {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: unlockedPassword })
+        body: JSON.stringify({ password: unlockedPassword, downloadPin })
       });
       if (!response.ok) {
         let message = "Unable to create the ZIP download. Please try again.";
