@@ -34,8 +34,23 @@ async function buildGalleryZip(request, env, slug, reference) {
     if (pinDigest !== gallery.download_pin_hash) return json({ error: "Enter the correct download PIN to download this gallery.", code: "INVALID_DOWNLOAD_PIN" }, 401);
   }
 
-  const result = await env.DB.prepare("SELECT id,original_filename,storage_key FROM photos WHERE gallery_id=? ORDER BY sort_order,created_at").bind(gallery.id).all();
+  let requestedIds = null;
+  if (body.photoIds !== undefined) {
+    if (!Array.isArray(body.photoIds) || body.photoIds.length < 1 || body.photoIds.length > 50 ||
+        body.photoIds.some(id => typeof id !== "string" || !id || id.length > 120)) {
+      return json({ error: "Choose between 1 and 50 valid photos for each ZIP part.", code: "INVALID_ZIP_PHOTO_LIST" }, 400);
+    }
+    requestedIds = [...new Set(body.photoIds)];
+    if (requestedIds.length !== body.photoIds.length) return json({ error: "A photo was included more than once in this ZIP part." }, 400);
+  }
+  const photoSql = "SELECT id,original_filename,storage_key,bytes FROM photos WHERE gallery_id=?" +
+    (requestedIds ? " AND id IN (" + requestedIds.map(() => "?").join(",") + ")" : "") +
+    " ORDER BY sort_order,created_at";
+  const result = await env.DB.prepare(photoSql).bind(gallery.id, ...(requestedIds || [])).all();
   const photos = result.results || [];
+  if (requestedIds && photos.length !== requestedIds.length) return json({ error: "One or more selected photos are no longer available in this gallery." }, 404);
+  const knownBytes = photos.reduce((total, photo) => total + Math.max(0, Number(photo.bytes) || 0), 0);
+  if (knownBytes > 96 * 1024 * 1024) return json({ error: "This ZIP part is too large. Select fewer photos and try again.", code: "ZIP_PART_TOO_LARGE" }, 413);
   if (photos.length > 65535) return json({ error: "This gallery has too many files for a single ZIP archive." }, 413);
   if (!photos.length) return json({ error: "There are no photos available to download in this gallery." }, 404);
 
