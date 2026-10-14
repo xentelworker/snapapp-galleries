@@ -17,7 +17,7 @@ function localHeader(name, crc, size, dt) { return le(30, [[0,0x04034b50,4],[4,2
 function centralHeader(name, crc, size, offset, dt) { return le(46, [[0,0x02014b50,4],[4,20,2],[6,20,2],[8,0x0800,2],[10,0,2],[12,dt.time,2],[14,dt.date,2],[16,crc,4],[20,size,4],[24,size,4],[28,name.length,2],[30,0,2],[32,0,2],[34,0,2],[36,0,2],[38,0,4],[42,offset,4]]); }
 function endRecord(count, centralSize, centralOffset) { return le(22, [[0,0x06054b50,4],[4,0,2],[6,0,2],[8,count,2],[10,count,2],[12,centralSize,4],[16,centralOffset,4],[20,0,2]]); }
 async function buildGalleryZip(request, env, slug) {
-  const gallery = await env.DB.prepare("SELECT id,slug,title,status,downloads_enabled,password_hash FROM galleries WHERE slug=?").bind(slug).first();
+  const gallery = await env.DB.prepare("SELECT id,slug,title,status,downloads_enabled,password_hash,download_pin_hash FROM galleries WHERE slug=?").bind(slug).first();
   if (!gallery || gallery.status !== "published") return json({ error: "This gallery is unavailable." }, 404);
   if (!gallery.downloads_enabled) return json({ error: "Downloads are disabled for this gallery." }, 403);
   let body = {}; try { body = await request.json(); } catch {}
@@ -25,6 +25,11 @@ async function buildGalleryZip(request, env, slug) {
     const supplied = await crypto.subtle.digest("SHA-256", encoder.encode(String(body.password || "")));
     const digest = [...new Uint8Array(supplied)].map(b => b.toString(16).padStart(2, "0")).join("");
     if (digest !== gallery.password_hash) return json({ error: "Unlock this gallery before downloading." }, 401);
+  }
+  if (gallery.download_pin_hash) {
+    const suppliedPin = await crypto.subtle.digest("SHA-256", encoder.encode(String(body.downloadPin || "")));
+    const pinDigest = [...new Uint8Array(suppliedPin)].map(b => b.toString(16).padStart(2, "0")).join("");
+    if (pinDigest !== gallery.download_pin_hash) return json({ error: "Enter the correct download PIN to download this gallery.", code: "INVALID_DOWNLOAD_PIN" }, 401);
   }
   const result = await env.DB.prepare("SELECT id,original_filename,storage_key FROM photos WHERE gallery_id=? ORDER BY sort_order,created_at").bind(gallery.id).all();
   const photos = result.results || [];
