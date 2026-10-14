@@ -70,8 +70,18 @@ function App() {
         body: JSON.stringify({ password: unlockedPassword, downloadPin })
       });
       if (!response.ok) {
-        let message = "Unable to create the ZIP download. Please try again.";
-        try { const data = await response.json(); if (data.error) message = data.error; } catch {}
+        let message = "";
+        try {
+          const data = await response.json();
+          if (typeof data.error === "string") message = data.error;
+          else if (data.code) message = "The ZIP request failed (" + data.code + "). Retry; if it repeats, contact the gallery owner.";
+        } catch {}
+        if (!message) {
+          const ray = response.headers.get("cf-ray");
+          message = "The ZIP request failed (HTTP " + response.status + "). Refresh the gallery and retry.";
+          if (ray) message += " If it repeats, give the gallery owner Cloudflare Ray ID " + ray + ".";
+          else message += " If it repeats, contact the gallery owner and report HTTP " + response.status + ".";
+        }
         throw new Error(message);
       }
       const photoCount = Number(response.headers.get("x-snapapp-zip-photos") || 0);
