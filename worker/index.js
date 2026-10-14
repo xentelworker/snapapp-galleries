@@ -125,9 +125,9 @@ export default {
       const gallery = await galleryBySlug(env, decodeURIComponent(publicMatch[1]));
       if (!gallery) return json({ error: "gallery_not_found" }, 404);
       if (gallery.password_hash) return json({
-        gallery: { slug: gallery.slug, title: gallery.title, subtitle: gallery.subtitle, locked: true, showBranding: !!gallery.show_branding, brandName: gallery.brand_name }
+        gallery: { slug: gallery.slug, title: gallery.title, subtitle: gallery.subtitle, locked: true, showBranding: !!gallery.show_branding, brandName: gallery.brand_name, has_download_pin: !!gallery.download_pin_hash }
       });
-      return json({ gallery: { ...gallery, password_hash: undefined, download_pin_hash: undefined }, photos: await listPhotos(env, gallery.id) });
+      return json({ gallery: { ...gallery, has_download_pin: !!gallery.download_pin_hash, password_hash: undefined, download_pin_hash: undefined }, photos: await listPhotos(env, gallery.id) });
     }
 
     const unlockMatch = path.match(/^\/api\/galleries\/([^/]+)\/unlock$/);
