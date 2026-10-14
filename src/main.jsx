@@ -89,9 +89,11 @@ function App() {
       try {
         blob = await response.blob();
       } catch {
+        const reference = response.headers.get("x-snapapp-zip-reference");
         const ray = response.headers.get("cf-ray");
         let message = "The ZIP stream stopped before the archive finished. The incomplete file was not saved. Retry once.";
-        if (ray) message += " If it repeats, give the gallery owner Cloudflare Ray ID " + ray + ".";
+        if (reference) message += " If it repeats, give the gallery owner ZIP error ID " + reference + ".";
+        else if (ray) message += " If it repeats, give the gallery owner Cloudflare Ray ID " + ray + ".";
         else message += " If it repeats, contact the gallery owner and report the time of the attempt.";
         throw new Error(message);
       }
