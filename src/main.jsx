@@ -71,7 +71,8 @@ function App() {
     for (const photo of photos) {
       const photoBytes = Math.max(0, Number(photo.bytes) || 0);
       if (photoBytes > maxPartBytes) {
-        throw new Error("“" + (photo.original_filename || "A photo") + "” is larger than 96 MB and cannot be included in a ZIP part. Download that photo individually.");
+        const message = (photo.original_filename || "A photo") + " is larger than 96 MB and cannot be included in a ZIP part. Download that photo individually.";
+        setDownloadingZip(false); setError(message); window.alert(message); return;
       }
       if (batch.length && (batchBytes + photoBytes > targetPartBytes || batch.length >= 50)) {
         batches.push(batch); batch = []; batchBytes = 0;
