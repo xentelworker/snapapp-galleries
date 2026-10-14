@@ -57,7 +57,7 @@ Before deploying this feature to a new environment:
 
 1. Create the Cloudflare Queue named `snapapp-gallery-zip-jobs`.
 2. Apply the new D1 migration with `npm run db:migrate:remote`.
-3. Configure a verified Resend sender, then add Worker secrets `ZIP_EMAIL_API_KEY` and `ZIP_EMAIL_FROM` (for example, `SnapApp Galleries <galleries@your-verified-domain>`). Never commit these values.
+3. Enable Workers Paid, then onboard `snapapp.ca` under Compute > Email Service > Email Sending. Cloudflare adds the sender authentication records; confirm they do not conflict with existing mail DNS before accepting changes. The Worker sends from `gallery@snapapp.ca` using a restricted native email binding, so no API key is needed.
 4. Deploy the Worker and frontend.
 
-The Worker returns a clear notice if email is not configured. ZIP preparation can still finish and be downloaded from the open gallery page. Queue retries, private expiring download tokens, and scheduled archive cleanup are enabled.
+The Worker reports email sending failures by ZIP job ID. ZIP preparation can still finish and be downloaded from the open gallery page. Queue retries, private expiring download tokens, and scheduled archive cleanup are enabled.

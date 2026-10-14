@@ -134,7 +134,7 @@ export async function saveStreamToR2(bucket, key, stream, jobId) {
 }
 
 async function sendReadyEmail(env, job, gallery, token) {
-  if (!env.ZIP_EMAIL_API_KEY || !env.ZIP_EMAIL_FROM) {
+  if (!env.ZIP_EMAIL) {
     await env.DB.prepare("UPDATE zip_jobs SET email_status='not_configured' WHERE id=?").bind(job.id).run();
     return;
   }
@@ -143,17 +143,16 @@ async function sendReadyEmail(env, job, gallery, token) {
   const text = "Your ZIP for " + gallery.title + " is ready. Download it here: " + url + "\n\nThis private link expires in 48 hours.";
   const html = "<p>Your ZIP for <strong>" + safeTitle + "</strong> is ready.</p><p><a href=\"" + url + "\">Download your gallery ZIP</a></p><p>This private link expires in 48 hours.</p>";
   try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method:"POST", headers:{ "authorization":"Bearer " + env.ZIP_EMAIL_API_KEY, "content-type":"application/json" },
-      body:JSON.stringify({from:env.ZIP_EMAIL_FROM,to:[job.email],subject:"Your SnapApp gallery ZIP is ready",text,html})
+    await env.ZIP_EMAIL.send({
+      to: job.email,
+      from: { email: "gallery@snapapp.ca", name: "SnapApp Galleries" },
+      subject: "Your SnapApp gallery ZIP is ready",
+      text,
+      html
     });
-    if (!response.ok) {
-      const detail = (await response.text()).slice(0,300);
-      throw new Error("Email provider returned HTTP " + response.status + ": " + detail);
-    }
     await env.DB.prepare("UPDATE zip_jobs SET email_status='sent' WHERE id=?").bind(job.id).run();
   } catch (error) {
-    console.error("ZIP ready email failed", { jobId: job.id, error: String(error?.stack || error) });
+    console.error("ZIP ready email failed", { jobId: job.id, code: error?.code || "EMAIL_SEND_FAILED", error: String(error?.stack || error) });
     await env.DB.prepare("UPDATE zip_jobs SET email_status='failed' WHERE id=?").bind(job.id).run();
   }
 }

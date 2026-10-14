@@ -60,5 +60,14 @@
   },
   "limits": {
     "cpu_ms": 300000
-  }
+  },
+  "send_email": [
+    {
+      "name": "ZIP_EMAIL",
+      "remote": true,
+      "allowed_sender_addresses": [
+        "gallery@snapapp.ca"
+      ]
+    }
+  ]
 }

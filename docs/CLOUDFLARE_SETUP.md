@@ -51,8 +51,7 @@ Create the queue before deploying the Worker configuration:
 ```sh
 npx wrangler queues create snapapp-gallery-zip-jobs
 npm run db:migrate:remote
-npx wrangler secret put ZIP_EMAIL_API_KEY
-npx wrangler secret put ZIP_EMAIL_FROM
+# Enable the Workers Paid plan, then onboard snapapp.ca under Compute > Email Service > Email Sending
 ```
 
-Use a verified sender address for `ZIP_EMAIL_FROM`. These are Worker secrets, not checked-in configuration. Large ZIPs are streamed into multipart R2 uploads, emailed as private links, and removed after 48 hours. The Worker is configured for up to 5 minutes of CPU per queue invocation; account plan limits still apply.
+Cloudflare Email Sending requires Workers Paid and an onboarded sending domain. Review the DNS records before accepting them; they authenticate email sending and may affect existing mail setup. The Worker uses a restricted native email binding for gallery@snapapp.ca, so there is no API key to store. Large ZIPs are streamed into multipart R2 uploads, emailed as private links, and removed after 48 hours. The Worker is configured for up to 5 minutes of CPU per queue invocation.
