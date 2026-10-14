@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { crc32 } from "node:zlib";
 import { downloadGalleryZip } from "../worker/zip.js";
 import { validateZipBlob } from "../src/zip-validation.js";
 
@@ -84,6 +85,20 @@ test("streams a multi-chunk photo through the ZIP response", async () => {
   const blob = await response.blob();
   assert.equal(await validateZipBlob(blob, 1), true);
   assert.equal(blob.size, photoBytes.byteLength + 30 + new TextEncoder().encode("photo.jpg").length + 16 + 46 + new TextEncoder().encode("photo.jpg").length + 22);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const descriptorOffset = 30 + new TextEncoder().encode("photo.jpg").length + photoBytes.byteLength;
+  assert.equal(new DataView(bytes.buffer).getUint32(descriptorOffset + 4, true), crc32(photoBytes));
+});
+
+test("keeps large-photo ZIP CRC generation compatible and complete", async () => {
+  const photoBytes = new Uint8Array(16 * 1024 * 1024);
+  for (let i = 0; i < photoBytes.length; i++) photoBytes[i] = (i * 31 + 7) & 0xff;
+  const response = await downloadGalleryZip(request({}), makeEnv({ photoBytes }), "sample");
+  const blob = await response.blob();
+  assert.equal(await validateZipBlob(blob, 1), true);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const descriptorOffset = 30 + new TextEncoder().encode("photo.jpg").length + photoBytes.byteLength;
+  assert.equal(new DataView(bytes.buffer).getUint32(descriptorOffset + 4, true), crc32(photoBytes));
 });
 
 test("builds a ZIP containing only the selected photos", async () => {
