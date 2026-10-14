@@ -71,7 +71,7 @@ async function buildGalleryZip(request, env, slug) {
           if (item.done) break;
           const bytes = item.value instanceof Uint8Array ? item.value : new Uint8Array(item.value);
           size += bytes.byteLength;
-          if (size > 0xffffffff || offset + size + 16 > 0xffffffff) {
+          if (size > 0xffffffff || offset + bytes.byteLength + 16 > 0xffffffff) {
             const error = new Error("This gallery is too large for a single ZIP file.");
             error.zipFailureCode = "ZIP64_REQUIRED";
             throw error;
