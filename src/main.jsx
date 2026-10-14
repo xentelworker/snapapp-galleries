@@ -64,56 +64,71 @@ function App() {
       : "";
     if (gallery.has_download_pin && downloadPin === null) return;
     setDownloadingZip(true); setError("");
+    const targetPartBytes = 64 * 1024 * 1024;
+    const maxPartBytes = 96 * 1024 * 1024;
+    const batches = [];
+    let batch = [], batchBytes = 0;
+    for (const photo of photos) {
+      const photoBytes = Math.max(0, Number(photo.bytes) || 0);
+      if (photoBytes > maxPartBytes) {
+        throw new Error("“" + (photo.original_filename || "A photo") + "” is larger than 96 MB and cannot be included in a ZIP part. Download that photo individually.");
+      }
+      if (batch.length && (batchBytes + photoBytes > targetPartBytes || batch.length >= 50)) {
+        batches.push(batch); batch = []; batchBytes = 0;
+      }
+      batch.push(photo); batchBytes += photoBytes;
+    }
+    if (batch.length) batches.push(batch);
     try {
-      const response = await fetch("/api/galleries/" + encodeURIComponent(slug) + "/download.zip", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password: unlockedPassword, downloadPin })
-      });
-      if (!response.ok) {
-        let message = "";
-        try {
-          const data = await response.json();
-          if (typeof data.error === "string") message = data.error;
-          else if (data.code) message = "The ZIP request failed (" + data.code + "). Retry; if it repeats, contact the gallery owner.";
-        } catch {}
-        if (!message) {
-          const ray = response.headers.get("cf-ray");
-          message = "The ZIP request failed (HTTP " + response.status + "). Refresh the gallery and retry.";
-          if (ray) message += " If it repeats, give the gallery owner Cloudflare Ray ID " + ray + ".";
-          else message += " If it repeats, contact the gallery owner and report HTTP " + response.status + ".";
+      for (let i = 0; i < batches.length; i++) {
+        const part = batches[i];
+        const response = await fetch("/api/galleries/" + encodeURIComponent(slug) + "/download.zip", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ password: unlockedPassword, downloadPin, photoIds: part.map(photo => photo.id) })
+        });
+        if (!response.ok) {
+          let message = "";
+          try {
+            const data = await response.json();
+            if (typeof data.error === "string") message = data.error;
+          } catch {}
+          if (!message) {
+            const ray = response.headers.get("cf-ray");
+            message = "The ZIP request failed (HTTP " + response.status + "). Refresh the gallery and retry.";
+            if (ray) message += " Give the gallery owner Cloudflare Ray ID " + ray + ".";
+          }
+          throw new Error(message);
         }
-        throw new Error(message);
+        let blob;
+        try {
+          blob = await response.blob();
+        } catch {
+          const reference = response.headers.get("x-snapapp-zip-reference");
+          const ray = response.headers.get("cf-ray");
+          let message = "ZIP part " + (i + 1) + " stopped before it finished.";
+          if (reference) message += " Give the gallery owner ZIP error ID " + reference + ".";
+          else if (ray) message += " Give the gallery owner Cloudflare Ray ID " + ray + ".";
+          throw new Error(message);
+        }
+        if (!blob.size || !blob.type.includes("zip") || !(await validateZipBlob(blob, part.length))) {
+          throw new Error("ZIP part " + (i + 1) + " did not pass its completeness check. No incomplete file was saved.");
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = batches.length === 1
+          ? (gallery.slug || "gallery") + "-photos.zip"
+          : (gallery.slug || "gallery") + "-photos-" + String(i + 1).padStart(3, "0") + "-of-" + String(batches.length).padStart(3, "0") + ".zip";
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+        if (i + 1 < batches.length) await new Promise(resolve => window.setTimeout(resolve, 500));
       }
-      const photoCount = Number(response.headers.get("x-snapapp-zip-photos") || 0);
-      let blob;
-      try {
-        blob = await response.blob();
-      } catch {
-        const reference = response.headers.get("x-snapapp-zip-reference");
-        const ray = response.headers.get("cf-ray");
-        let message = "The ZIP stream stopped before the archive finished. The incomplete file was not saved. Retry once.";
-        if (reference) message += " If it repeats, give the gallery owner ZIP error ID " + reference + ".";
-        else if (ray) message += " If it repeats, give the gallery owner Cloudflare Ray ID " + ray + ".";
-        else message += " If it repeats, contact the gallery owner and report the time of the attempt.";
-        throw new Error(message);
-      }
-      if (!blob.size || !photoCount || !blob.type.includes("zip")) {
-        throw new Error("The server returned an empty or invalid ZIP file. Please try again; if it repeats, contact the gallery owner.");
-      }
-      if (!(await validateZipBlob(blob, photoCount))) {
-        throw new Error("The ZIP download was cut off before the archive finished. Delete the incomplete file and try again. If it happens again, contact the gallery owner.");
-      }
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = (gallery.slug || "gallery") + "-photos.zip";
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 120000);
     } catch (e) {
-      const message = e.message || "Unable to create the ZIP download.";
+      let message = e.message || "Unable to create the ZIP download.";
+      if (batches.length > 1) message += " " + batches.length + " ZIP parts were planned; earlier completed parts may already be in your Downloads folder.";
       setError(message);
       window.alert(message);
     } finally { setDownloadingZip(false); }
