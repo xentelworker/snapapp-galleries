@@ -30,38 +30,44 @@ export async function downloadGalleryZip(request, env, slug) {
   const photos = result.results || [];
   if (photos.length > 65535) return json({ error: "This gallery has too many files for a single ZIP archive." }, 413);
   const safeSlug = String(gallery.slug || "gallery").replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 100) || "gallery";
-  async function* zipChunks() {
-    const central = []; let offset = 0; const used = new Set(); const dt = dosDateTime();
-    for (let i = 0; i < photos.length; i++) {
-      const photo = photos[i]; const object = await env.PHOTOS.get(photo.storage_key); if (!object) continue;
-      const bytes = new Uint8Array(await object.arrayBuffer());
-      if (bytes.byteLength > 0xffffffff || offset + bytes.byteLength > 0xffffffff) throw new Error("ZIP64_REQUIRED");
-      const name = encoder.encode(uniqueFilename(photo.original_filename, used, i)); const crc = crc32(bytes);
-      const local = localHeader(name, crc, bytes.byteLength, dt); const entryOffset = offset;
-      yield local; offset += local.byteLength; yield name; offset += name.byteLength;
-      yield bytes; offset += bytes.byteLength;
-      central.push({ header: centralHeader(name, crc, bytes.byteLength, entryOffset, dt), name });
+  const chunks = [];
+  const central = [];
+  let offset = 0;
+  const used = new Set();
+  const dt = dosDateTime();
+  let included = 0;
+  for (let i = 0; i < photos.length; i++) {
+    const photo = photos[i];
+    const object = await env.PHOTOS.get(photo.storage_key);
+    if (!object) {
+      console.error("Gallery ZIP photo missing from R2", { slug, photoId: photo.id, storageKey: photo.storage_key });
+      continue;
     }
-    const centralOffset = offset; let centralSize = 0;
-    for (const entry of central) {
-      yield entry.header; offset += entry.header.byteLength; centralSize += entry.header.byteLength;
-      yield entry.name; offset += entry.name.byteLength; centralSize += entry.name.byteLength;
-    }
-    yield endRecord(central.length, centralSize, centralOffset);
+    const bytes = new Uint8Array(await object.arrayBuffer());
+    if (bytes.byteLength > 0xffffffff || offset + bytes.byteLength > 0xffffffff) return json({ error: "This gallery is too large for a single ZIP file. Please download photos individually." }, 413);
+    const name = encoder.encode(uniqueFilename(photo.original_filename, used, i));
+    const crc = crc32(bytes);
+    const local = localHeader(name, crc, bytes.byteLength, dt);
+    const entryOffset = offset;
+    chunks.push(local, name, bytes);
+    offset += local.byteLength + name.byteLength + bytes.byteLength;
+    central.push({ header: centralHeader(name, crc, bytes.byteLength, entryOffset, dt), name });
+    included++;
   }
-  const iterator = zipChunks();
-  const stream = new ReadableStream({
-    async pull(controller) {
-      try {
-        const item = await iterator.next();
-        if (item.done) controller.close();
-        else controller.enqueue(item.value);
-      } catch (error) {
-        console.error("Gallery ZIP generation failed", { slug, error: String(error?.stack || error) });
-        controller.error(error);
-      }
-    },
-    async cancel() { if (iterator.return) await iterator.return(); }
-  });
-  return new Response(stream, { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${safeSlug}-photos.zip"`, "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+  if (included === 0) {
+    console.error("Gallery ZIP contains no retrievable photo objects", { slug, databasePhotoCount: photos.length });
+    return json({ error: photos.length ? "We found the gallery photos but could not retrieve their image files. Please contact the gallery owner." : "There are no photos available to download in this gallery." }, 404);
+  }
+  const centralOffset = offset;
+  let centralSize = 0;
+  for (const entry of central) {
+    chunks.push(entry.header, entry.name);
+    offset += entry.header.byteLength + entry.name.byteLength;
+    centralSize += entry.header.byteLength + entry.name.byteLength;
+  }
+  chunks.push(endRecord(central.length, centralSize, centralOffset));
+  const archive = new Uint8Array(offset + 22);
+  let cursor = 0;
+  for (const chunk of chunks) { archive.set(chunk, cursor); cursor += chunk.byteLength; }
+  return new Response(archive, { headers: { "content-type": "application/zip", "content-disposition": `attachment; filename="${safeSlug}-photos.zip"`, "content-length": String(archive.byteLength), "x-snapapp-zip-photos": String(included), "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }
